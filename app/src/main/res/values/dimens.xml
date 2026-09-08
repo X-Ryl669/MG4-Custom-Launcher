@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Width of the climate + energy column. Both cards read it so they can never
+        drift apart again: the energy card used to be 730dp while climate was
+        380dp, which drew the energy tile straight through the music card.
+        On the car's 1778dp-wide screen this leaves ~1050dp for the player.
+    -->
+    <dimen name="left_column_width">330dp</dimen>
+</resources>

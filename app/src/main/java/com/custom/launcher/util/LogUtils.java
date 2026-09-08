@@ -7,13 +7,47 @@ import android.util.Log;
  */
 public class LogUtils {
 
-    // List of all log tags used in the app
-    private static final String[] APP_LOG_TAGS = {
+    /**
+     * Every log tag this app writes under.
+     *
+     * <p>
+     * This is the single source of truth: {@link LogTee} filters logcat with it,
+     * and {@code LogViewerActivity} uses it for its "app only" view. It used to be
+     * duplicated in both places, and a tag missing from one of the copies meant
+     * silently losing the only diagnostic channel there is on this head unit —
+     * there is no adb, so a log line that isn't captured is a line that never
+     * existed. Add new tags here and nowhere else.
+     */
+    public static final String[] APP_LOG_TAGS = {
             "CustomLauncher",
-            "VehicleDataService",
+            "EnergyTileController",
+            "CarPropertyClient",
+            "BmsDebugActivity",
             "MediaListenerService",
-            "SaicMediaService"
+            "MediaBrowseActivity",
+            "BluetoothArtCache",
+            "HvacTileController",
+            "HvacClient",
+            "CarAdapter",
+            "SaicPackages",
+            "LauncherSettings",
+            "LocationTools",
+            "LogTee",
+            "LogUtils",
+            "SaicSourceSwitch",
+            "RadioClient",
+            "LocationRelay"
     };
+
+    /** {@code logcat} filterspec that keeps only our tags: "-s T1:V T2:V ... *:S". */
+    public static String[] logcatFilterSpec() {
+        String[] spec = new String[APP_LOG_TAGS.length + 1];
+        for (int i = 0; i < APP_LOG_TAGS.length; i++) {
+            spec[i] = APP_LOG_TAGS[i] + ":V";
+        }
+        spec[APP_LOG_TAGS.length] = "*:S";
+        return spec;
+    }
 
     /**
      * Initialize logging by setting log level to VERBOSE for all app tags.

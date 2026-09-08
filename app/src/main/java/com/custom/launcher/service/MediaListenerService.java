@@ -32,6 +32,20 @@ public class MediaListenerService extends NotificationListenerService {
 
     private MediaSessionManager mediaSessionManager;
     private MediaController activeController;
+    private List<MediaController> sessions = java.util.Collections.emptyList();
+
+    /**
+     * Source the user picked in the browse screen, or null to follow whatever the
+     * car is doing.
+     *
+     * <p>
+     * This car boots with the radio session active but muted, so "first active
+     * session" is the radio and the tile's play button was commanding a muted
+     * radio rather than the phone. Letting the user name the source they mean
+     * fixes that without needing a vendor source-switch API, which this firmware
+     * does not appear to have: {@code ICarAudioService} only covers volume and EQ.
+     */
+    private static String preferredPackage;
 
     public interface MediaInfoListener {
         void onMediaChanged(String title, String artist, boolean isPlaying, Bitmap albumArt);
@@ -48,6 +62,65 @@ public class MediaListenerService extends NotificationListenerService {
     public static MediaController getActiveController() {
         if (instance != null) {
             return instance.activeController;
+        }
+        return null;
+    }
+
+    /**
+     * Controller for a specific app's session, whether or not it is the one the
+     * tile is currently showing. Used to start Bluetooth playback while the radio
+     * still holds the "active" slot.
+     */
+    public static MediaController getControllerForPackage(String packageName) {
+        if (instance == null || packageName == null) {
+            return null;
+        }
+        for (MediaController controller : instance.sessions) {
+            if (controller.getPackageName() != null
+                    && controller.getPackageName().startsWith(packageName)) {
+                return controller;
+            }
+        }
+        return null;
+    }
+
+    /** Packages that currently have a media session, for the browse screen. */
+    public static List<String> getSessionPackages() {
+        List<String> packages = new java.util.ArrayList<>();
+        if (instance != null) {
+            for (MediaController controller : instance.sessions) {
+                if (controller.getPackageName() != null) {
+                    packages.add(controller.getPackageName());
+                }
+            }
+        }
+        return packages;
+    }
+
+    /**
+     * Pins the tile to one source. Pass null to go back to following the car.
+     * Returns the controller now in use, if any.
+     */
+    public static MediaController selectSource(String packageName) {
+        preferredPackage = packageName;
+        Log.i(TAG, "Preferred media source set to " + packageName);
+        if (instance != null) {
+            instance.onActiveSessionsChanged(instance.sessions);
+        }
+        return getActiveController();
+    }
+
+    public static String getPreferredSource() {
+        return preferredPackage;
+    }
+
+    /**
+     * Package that owns the currently active session, or null if nothing is
+     * playing. Lets the UI label the source and tell radio apart from Bluetooth.
+     */
+    public static String getActiveSourcePackage() {
+        if (instance != null && instance.activeController != null) {
+            return instance.activeController.getPackageName();
         }
         return null;
     }
@@ -70,22 +143,64 @@ public class MediaListenerService extends NotificationListenerService {
     }
 
     private void onActiveSessionsChanged(List<MediaController> controllers) {
-        if (controllers != null && !controllers.isEmpty()) {
-            // Use the first active controller
+        sessions = controllers != null ? controllers : java.util.Collections.emptyList();
+
+        MediaController chosen = pickController(sessions);
+        if (chosen == null) {
             if (activeController != null) {
                 activeController.unregisterCallback(mediaCallback);
             }
-
-            activeController = controllers.get(0);
-            activeController.registerCallback(mediaCallback);
-
-            updateMediaInfo();
-        } else {
             activeController = null;
             if (listener != null) {
                 listener.onMediaChanged("No media playing", "", false, null);
             }
+            return;
         }
+
+        if (activeController != null) {
+            activeController.unregisterCallback(mediaCallback);
+        }
+        activeController = chosen;
+        activeController.registerCallback(mediaCallback);
+        Log.i(TAG, "Active media session is now " + activeController.getPackageName()
+                + " (of " + sessions.size() + " session(s))");
+
+        updateMediaInfo();
+    }
+
+    /**
+     * Chooses which session the tile follows.
+     *
+     * <p>
+     * Order matters here. The user's explicit choice wins, because the whole point
+     * of the source picker is to override the car. Failing that, a session that is
+     * actually playing beats one that merely exists — otherwise the muted radio
+     * session the car creates at boot shadows the phone. Only then does it fall
+     * back to the first session, which is what this used to do unconditionally.
+     */
+    private MediaController pickController(List<MediaController> controllers) {
+        if (controllers.isEmpty()) {
+            return null;
+        }
+
+        if (preferredPackage != null) {
+            for (MediaController controller : controllers) {
+                if (controller.getPackageName() != null
+                        && controller.getPackageName().startsWith(preferredPackage)) {
+                    return controller;
+                }
+            }
+            Log.i(TAG, "Preferred source " + preferredPackage + " has no session right now");
+        }
+
+        for (MediaController controller : controllers) {
+            PlaybackState state = controller.getPlaybackState();
+            if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
+                return controller;
+            }
+        }
+
+        return controllers.get(0);
     }
 
     private MediaController.Callback mediaCallback = new MediaController.Callback() {

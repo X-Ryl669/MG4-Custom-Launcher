@@ -1,17 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Home screen for the MG4 SE launcher. 1778x720dp at density 1.0, with the
+    stock system nav bar inset on the left and the status bar on top, so the
+    usable area is roughly 1540x594dp.
+
+    There used to be a second copy of this file under layout-w1778dp/. Keeping
+    two in sync failed in exactly the way you would expect: a width fix landed
+    in one and not the other, so on the car batteryCard was still 730dp wide and
+    drew straight through the music card, while musicHeatingContainer was capped
+    at 50% width and stopped well short of the quick-action rail. One file now
+    serves every configuration.
+-->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/background_dark"
-    android:padding="12dp">
+    android:padding="8dp">
 
-    <!-- Time Card -->
+    <!--
+        Climate. Taller than it was, because two arc sliders side by side need the
+        room and because side-by-side horizontal SeekBars sat close enough
+        together to be hit by mistake. The card itself is no longer clickable:
+        only hvacOpenButton opens the full HVAC page.
+    -->
     <androidx.cardview.widget.CardView
-        android:id="@+id/timeCard"
-        android:layout_width="380dp"
-        android:layout_height="180dp"
+        android:id="@+id/hvacCard"
+        android:layout_width="@dimen/left_column_width"
+        android:layout_height="285dp"
         app:cardBackgroundColor="@color/card_background"
         app:cardCornerRadius="20dp"
         app:cardElevation="0dp"
@@ -22,344 +39,96 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:orientation="vertical"
-            android:gravity="center"
-            android:padding="20dp">
+            android:padding="14dp">
 
-            <TextView
-                android:id="@+id/timeText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="12:00"
-                android:textColor="@color/text_primary"
-                android:textSize="72sp"
-                android:fontFamily="sans-serif-light"
-                android:includeFontPadding="false"
-                android:layout_marginBottom="8dp" />
-
-            <TextView
-                android:id="@+id/dateText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Saturday, 24 January"
-                android:textColor="@color/text_secondary"
-                android:textSize="16sp"
-                android:fontFamily="sans-serif" />
-
-        </LinearLayout>
-
-    </androidx.cardview.widget.CardView>
-
-    <!-- Battery/Energy Card (Bottom Left) -->
-    <androidx.cardview.widget.CardView
-        android:id="@+id/batteryCard"
-        android:layout_width="380dp"
-        android:layout_height="0dp"
-        android:layout_marginTop="12dp"
-        app:cardBackgroundColor="@color/card_background"
-        app:cardCornerRadius="24dp"
-        app:cardElevation="0dp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/timeCard"
-        app:layout_constraintBottom_toBottomOf="parent">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:padding="16dp"
-            android:gravity="center">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="BATTERY"
-                android:textColor="@color/text_secondary"
-                android:textSize="10sp"
-                android:fontFamily="sans-serif-medium"
-                android:letterSpacing="0.1"
-                android:layout_marginBottom="16dp" />
-
-            <!-- Horizontal Battery Indicator (60% Width) -->
-            <FrameLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp">
-
-                <FrameLayout
-                    android:layout_width="220dp"
-                    android:layout_height="60dp">
-
-                    <!-- Battery Outline -->
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:layout_marginEnd="10dp"
-                        android:background="@drawable/battery_outline" />
-
-                    <!-- Battery Fill Container -->
-                    <FrameLayout
-                        android:id="@+id/batteryFillContainer"
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:layout_marginEnd="10dp"
-                        android:padding="6dp">
-
-                        <View
-                            android:id="@+id/batteryFill"
-                            android:layout_width="40dp"
-                            android:layout_height="match_parent"
-                            android:layout_gravity="start"
-                            android:background="@drawable/battery_fill" />
-
-                    </FrameLayout>
-
-                    <!-- Battery Cap (right side) -->
-                    <View
-                        android:layout_width="7dp"
-                        android:layout_height="28dp"
-                        android:layout_gravity="end|center_vertical"
-                        android:background="@drawable/battery_cap" />
-
-                </FrameLayout>
-
-            </FrameLayout>
-
-            <!-- Battery Info Below -->
-            <TextView
-                android:id="@+id/batteryText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="39%"
-                android:textColor="@color/text_primary"
-                android:textSize="32sp"
-                android:fontFamily="sans-serif-thin"
-                android:letterSpacing="-0.02"
-                android:layout_marginBottom="2dp" />
-
-            <TextView
-                android:id="@+id/rangeText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="85 miles"
-                android:textColor="@color/text_secondary"
-                android:textSize="13sp"
-                android:fontFamily="sans-serif" />
-
-        </LinearLayout>
-
-    </androidx.cardview.widget.CardView>
-
-    <!-- Music + Heating Container (replaces old music card) -->
-    <LinearLayout
-        android:id="@+id/musicHeatingContainer"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:orientation="vertical"
-        app:layout_constraintStart_toEndOf="@id/timeCard"
-        app:layout_constraintEnd_toStartOf="@id/quickActionsCard"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        android:layout_marginStart="12dp"
-        android:layout_marginEnd="12dp">
-
-        <!-- Music Card (Top 90%) -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/musicCard"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="9"
-            app:cardBackgroundColor="@color/card_background"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="0dp"
-            android:layout_marginBottom="6dp">
-
+            <!-- Header: open-page button, label, power switch -->
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:padding="20dp">
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="NOW PLAYING"
-                    android:textColor="@color/text_tertiary"
-                    android:textSize="11sp"
-                    android:letterSpacing="0.1"
-                    android:fontFamily="sans-serif-medium"
-                    android:layout_marginBottom="10dp" />
-
-                <!-- Album Art -->
                 <ImageView
-                    android:id="@+id/albumArt"
-                    android:layout_width="160dp"
-                    android:layout_height="160dp"
-                    android:src="@drawable/ic_music_placeholder"
-                    android:scaleType="centerCrop"
-                    android:background="@drawable/rounded_album_art"
-                    android:clipToOutline="true"
-                    android:layout_marginBottom="10dp" />
-
-                <!-- Song Info -->
-                <TextView
-                    android:id="@+id/songTitle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Song Title"
-                    android:textColor="@color/text_primary"
-                    android:textSize="20sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:maxLines="1"
-                    android:ellipsize="end"
-                    android:gravity="center"
-                    android:layout_marginBottom="2dp" />
+                    android:id="@+id/hvacOpenButton"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:padding="4dp"
+                    android:src="@drawable/ic_open_page"
+                    android:scaleType="fitCenter"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="Open the climate page" />
 
                 <TextView
-                    android:id="@+id/artistName"
-                    android:layout_width="match_parent"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:text="Artist Name"
+                    android:text="CLIMATE"
                     android:textColor="@color/text_secondary"
-                    android:textSize="14sp"
-                    android:fontFamily="sans-serif"
-                    android:maxLines="1"
-                    android:ellipsize="end"
+                    android:textSize="10sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.1"
                     android:gravity="center"
-                    android:layout_marginBottom="10dp" />
+                    android:paddingHorizontal="4dp" />
 
-                <!-- Progress Bar -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:layout_marginBottom="10dp">
-
-                    <SeekBar
-                        android:id="@+id/progressBar"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        style="@android:style/Widget.SeekBar"
-                        android:progressTint="@color/text_primary"
-                        android:progressBackgroundTint="#404040"
-                        android:thumbTint="@color/text_primary"
-                        android:splitTrack="false"
-                        android:minHeight="4dp"
-                        android:maxHeight="4dp"
-                        android:max="100"
-                        android:progress="0"
-                        android:layout_marginBottom="6dp" />
-
-                    <!-- Time Labels -->
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/currentTime"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="0:00"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="14sp"
-                            android:fontFamily="sans-serif"
-                            android:gravity="start" />
-
-                        <TextView
-                            android:id="@+id/totalTime"
-                            android:layout_width="0dp"
-                            android:layout_weight="1"
-                            android:layout_height="wrap_content"
-                            android:text="-0:00"
-                            android:textColor="@color/text_secondary"
-                            android:textSize="14sp"
-                            android:fontFamily="sans-serif"
-                            android:gravity="end" />
-
-                    </LinearLayout>
-
-                </LinearLayout>
-
-                <!-- Playback Controls -->
-                <LinearLayout
+                <!--
+                    Typed as a plain Switch in XML but held as a CompoundButton in
+                    code: AppCompat rewrites this to SwitchCompat at inflation
+                    time, which is not an android.widget.Switch.
+                -->
+                <Switch
+                    android:id="@+id/hvacPowerSwitch"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center">
-
-                    <ImageButton
-                        android:id="@+id/prevButton"
-                        android:layout_width="66dp"
-                        android:layout_height="66dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@drawable/ic_previous"
-                        android:tint="@color/text_primary"
-                        android:scaleType="fitCenter"
-                        android:padding="14dp"
-                        android:contentDescription="Previous" />
-
-                    <Space
-                        android:layout_width="24dp"
-                        android:layout_height="wrap_content" />
-
-                    <ImageButton
-                        android:id="@+id/playPauseButton"
-                        android:layout_width="75dp"
-                        android:layout_height="75dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@drawable/ic_play"
-                        android:tint="@color/text_primary"
-                        android:scaleType="fitCenter"
-                        android:padding="12dp"
-                        android:contentDescription="Play/Pause" />
-
-                    <Space
-                        android:layout_width="24dp"
-                        android:layout_height="wrap_content" />
-
-                    <ImageButton
-                        android:id="@+id/nextButton"
-                        android:layout_width="66dp"
-                        android:layout_height="66dp"
-                        android:background="?attr/selectableItemBackgroundBorderless"
-                        android:src="@drawable/ic_next"
-                        android:tint="@color/text_primary"
-                        android:scaleType="fitCenter"
-                        android:padding="14dp"
-                        android:contentDescription="Next" />
-
-                </LinearLayout>
+                    android:contentDescription="Climate on/off" />
 
             </LinearLayout>
 
-        </androidx.cardview.widget.CardView>
-
-        <!-- Heating Controls Card (Bottom 10%) -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/heatingCard"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            app:cardBackgroundColor="@color/card_background"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="0dp">
-
+            <!-- Temperature and fan, one dial each so they cannot be confused -->
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
                 android:orientation="horizontal"
-                android:gravity="center"
-                android:padding="8dp">
+                android:layout_marginTop="6dp">
 
-                <!-- Left Heated Seat Button -->
+                <com.custom.launcher.widget.ArcSliderView
+                    android:id="@+id/hvacTempDial"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="match_parent"
+                    app:arcLabel="TEMP" />
+
+                <com.custom.launcher.widget.ArcSliderView
+                    android:id="@+id/hvacFanDial"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="match_parent"
+                    app:arcLabel="FAN" />
+
+            </LinearLayout>
+
+            <!--
+                Seat and wheel heating, moved here from a full-width card under the
+                media player. Same ids and same icons as before, so the toggle
+                logic in MainActivity is untouched; what changed is that segments
+                for hardware this car does not have are hidden rather than shown
+                doing nothing. Climate controls belong on the climate tile anyway.
+            -->
+            <LinearLayout
+                android:id="@+id/heatingPill"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal"
+                android:background="@drawable/heating_pill_background">
+
                 <LinearLayout
                     android:id="@+id/leftSeatButton"
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="match_parent"
-                    android:orientation="vertical"
                     android:gravity="center"
                     android:clickable="true"
                     android:focusable="true"
@@ -367,31 +136,26 @@
 
                     <ImageView
                         android:id="@+id/leftSeatIcon"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:src="@drawable/ic_heated_seat_off"
                         android:scaleType="fitCenter"
-                        android:contentDescription="Left Heated Seat" />
-
-                    <TextView
-                        android:id="@+id/leftSeatLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="OFF"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="10sp"
-                        android:fontFamily="sans-serif-medium"
-                        android:layout_marginTop="2dp" />
+                        android:contentDescription="Driver seat heating" />
 
                 </LinearLayout>
 
-                <!-- Heated Steering Wheel Button -->
+                <View
+                    android:id="@+id/heatingDividerLeft"
+                    android:layout_width="1dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginVertical="10dp"
+                    android:background="#26FFFFFF" />
+
                 <LinearLayout
                     android:id="@+id/wheelButton"
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="match_parent"
-                    android:orientation="vertical"
                     android:gravity="center"
                     android:clickable="true"
                     android:focusable="true"
@@ -399,31 +163,26 @@
 
                     <ImageView
                         android:id="@+id/wheelIcon"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:src="@drawable/ic_heated_wheel_off"
                         android:scaleType="fitCenter"
-                        android:contentDescription="Heated Steering Wheel" />
-
-                    <TextView
-                        android:id="@+id/wheelLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="OFF"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="10sp"
-                        android:fontFamily="sans-serif-medium"
-                        android:layout_marginTop="2dp" />
+                        android:contentDescription="Steering wheel heating" />
 
                 </LinearLayout>
 
-                <!-- Right Heated Seat Button -->
+                <View
+                    android:id="@+id/heatingDividerRight"
+                    android:layout_width="1dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginVertical="10dp"
+                    android:background="#26FFFFFF" />
+
                 <LinearLayout
                     android:id="@+id/rightSeatButton"
                     android:layout_width="0dp"
                     android:layout_weight="1"
                     android:layout_height="match_parent"
-                    android:orientation="vertical"
                     android:gravity="center"
                     android:clickable="true"
                     android:focusable="true"
@@ -431,23 +190,444 @@
 
                     <ImageView
                         android:id="@+id/rightSeatIcon"
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:src="@drawable/ic_heated_seat_off"
                         android:scaleType="fitCenter"
-                        android:contentDescription="Right Heated Seat" />
-
-                    <TextView
-                        android:id="@+id/rightSeatLabel"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="OFF"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="10sp"
-                        android:fontFamily="sans-serif-medium"
-                        android:layout_marginTop="2dp" />
+                        android:contentDescription="Passenger seat heating" />
 
                 </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!--
+        Energy. The stats are one line so the graph gets the height, and the tap
+        target that opened vehicle settings is gone.
+    -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/batteryCard"
+        android:layout_width="@dimen/left_column_width"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        app:cardBackgroundColor="@color/card_background"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="0dp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/hvacCard"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <!-- Header: label and the gauge, side by side -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/batteryLabel"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="BATTERY"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="10sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.1" />
+
+                <FrameLayout
+                    android:layout_width="130dp"
+                    android:layout_height="34dp">
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="6dp"
+                        android:background="@drawable/battery_outline" />
+
+                    <FrameLayout
+                        android:id="@+id/batteryFillContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginEnd="6dp"
+                        android:padding="3dp">
+
+                        <View
+                            android:id="@+id/batteryFill"
+                            android:layout_width="10dp"
+                            android:layout_height="match_parent"
+                            android:layout_gravity="start"
+                            android:background="@drawable/battery_fill" />
+
+                    </FrameLayout>
+
+                    <View
+                        android:layout_width="5dp"
+                        android:layout_height="16dp"
+                        android:layout_gravity="end|center_vertical"
+                        android:background="@drawable/battery_cap" />
+
+                </FrameLayout>
+
+            </LinearLayout>
+
+            <!-- Consumption over time: the tile's main content, so it gets the space -->
+            <com.custom.launcher.energy.ConsumptionGraphView
+                android:id="@+id/consumptionGraph"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:minHeight="130dp"
+                android:layout_marginTop="10dp"
+                android:layout_marginBottom="6dp" />
+
+            <TextView
+                android:id="@+id/graphCaption"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Collecting consumption data…"
+                android:textColor="@color/text_tertiary"
+                android:textSize="11sp"
+                android:fontFamily="sans-serif" />
+
+            <!--
+                Everything numeric on one line. It used to be a 64sp SoC figure, a
+                range line and a two-column power/consumption row, which between
+                them left the graph 60dp.
+            -->
+            <TextView
+                android:id="@+id/energyStatsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="—"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="2"
+                android:lineSpacingExtra="2dp" />
+
+        </LinearLayout>
+
+    </androidx.cardview.widget.CardView>
+
+    <!--
+        Music + seat heating. Fills everything between the left column and the
+        quick-action rail: no percentage cap, so the player reaches the rail.
+    -->
+    <LinearLayout
+        android:id="@+id/musicHeatingContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:orientation="vertical"
+        app:layout_constraintStart_toEndOf="@id/hvacCard"
+        app:layout_constraintEnd_toStartOf="@id/quickActionsCard"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp">
+
+        <!-- Music Card (Takes remaining space) -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/musicCard"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            app:cardBackgroundColor="@color/card_background"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp"
+            android:layout_marginBottom="8dp">
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
+                <!-- Blurred stretched background (fills gaps) -->
+                <ImageView
+                    android:id="@+id/albumArtBlurred"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="centerCrop"
+                    android:alpha="0.6" />
+
+                <!-- Album Art Foreground (fits properly without cropping) -->
+                <ImageView
+                    android:id="@+id/albumArt"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="fitCenter"
+                    android:alpha="1.0" />
+
+                <!-- Dark overlay for better text contrast -->
+                <!-- <View
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#0D000000" /> -->
+
+                <!-- Browse button, floating over the album art -->
+                <ImageButton
+                    android:id="@+id/browseButton"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:layout_gravity="top|end"
+                    android:layout_margin="8dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_browse"
+                    android:tint="@color/text_primary"
+                    android:scaleType="fitCenter"
+                    android:padding="12dp"
+                    android:contentDescription="Browse media" />
+
+                <!-- Source label, floating over the album art -->
+                <TextView
+                    android:id="@+id/mediaSourceLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="top|start"
+                    android:layout_margin="14dp"
+                    android:text="NOW PLAYING"
+                    android:textColor="@color/text_primary"
+                    android:textSize="12sp"
+                    android:letterSpacing="0.1"
+                    android:fontFamily="sans-serif-medium" />
+
+                <!-- Gradient scrim at bottom for text readability -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="300dp"
+                    android:layout_gravity="bottom"
+                    android:background="@drawable/gradient_scrim" />
+
+                <!-- Content overlay on top of album art -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:gravity="bottom"
+                    android:padding="6dp">
+
+                    <!-- Song Info -->
+                    <TextView
+                        android:id="@+id/songTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textColor="@color/text_primary"
+                        android:textSize="28sp"
+                        android:fontFamily="sans-serif"
+                        android:textStyle="bold"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:gravity="start"
+                        android:layout_marginBottom="6dp" />
+
+                    <TextView
+                        android:id="@+id/artistName"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text=""
+                        android:textColor="@color/text_primary"
+                        android:textSize="24sp"
+                        android:fontFamily="sans-serif"
+                        android:textStyle="normal"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:gravity="start"
+                        android:layout_marginBottom="10dp" />
+
+                    <!-- Progress Bar -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginBottom="8dp">
+
+                        <SeekBar
+                            android:id="@+id/progressBar"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            style="@android:style/Widget.SeekBar"
+                            android:progressTint="@color/text_primary"
+                            android:progressBackgroundTint="#404040"
+                            android:thumbTint="@color/text_primary"
+                            android:splitTrack="false"
+                            android:minHeight="4dp"
+                            android:maxHeight="4dp"
+                            android:max="100"
+                            android:progress="0"
+                            android:layout_marginBottom="0dp" />
+
+                        <!-- Time Labels -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/currentTime"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="0:00"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp"
+                                android:fontFamily="sans-serif"
+                                android:gravity="start" />
+
+                            <TextView
+                                android:id="@+id/totalTime"
+                                android:layout_width="0dp"
+                                android:layout_weight="1"
+                                android:layout_height="wrap_content"
+                                android:text="-0:00"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="14sp"
+                                android:fontFamily="sans-serif"
+                                android:gravity="end" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                    <!-- Playback Controls (smaller buttons) -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center">
+
+                        <ImageButton
+                            android:id="@+id/prevButton"
+                            android:layout_width="85dp"
+                            android:layout_height="85dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_previous"
+                            android:tint="@color/text_primary"
+                            android:scaleType="fitCenter"
+                            android:padding="16dp"
+                            android:contentDescription="Previous" />
+
+                        <Space
+                            android:layout_width="32dp"
+                            android:layout_height="wrap_content" />
+
+                        <ImageButton
+                            android:id="@+id/playPauseButton"
+                            android:layout_width="95dp"
+                            android:layout_height="95dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_play"
+                            android:tint="@color/text_primary"
+                            android:scaleType="fitCenter"
+                            android:padding="14dp"
+                            android:contentDescription="Play/Pause" />
+
+                        <Space
+                            android:layout_width="32dp"
+                            android:layout_height="wrap_content" />
+
+                        <ImageButton
+                            android:id="@+id/nextButton"
+                            android:layout_width="85dp"
+                            android:layout_height="85dp"
+                            android:background="?attr/selectableItemBackgroundBorderless"
+                            android:src="@drawable/ic_next"
+                            android:tint="@color/text_primary"
+                            android:scaleType="fitCenter"
+                            android:padding="16dp"
+                            android:contentDescription="Next" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </FrameLayout>
+
+        </androidx.cardview.widget.CardView>
+        <!--
+            GPS. Took the place of the full-width heating card, whose controls
+            moved onto the climate tile where they belong.
+
+            It is also the diagnostic for the standing GPS question: it subscribes
+            to updates and shows the age of the last fix, so "the position is
+            frozen" and "no fix ever arrives" stop looking the same. Tapping opens
+            whichever navigation app the user picked in the launcher menu — this
+            car ships none, so there is nothing sensible to default to.
+        -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/gpsCard"
+            android:layout_width="match_parent"
+            android:layout_height="86dp"
+            android:layout_weight="0"
+            android:clickable="true"
+            android:focusable="true"
+            android:foreground="?attr/selectableItemBackground"
+            app:cardBackgroundColor="@color/card_background"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="18dp">
+
+                <ImageView
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:src="@drawable/ic_gps"
+                    android:scaleType="fitCenter"
+                    android:layout_marginEnd="16dp"
+                    android:contentDescription="GPS position" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/gpsPosition"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Waiting for a fix…"
+                        android:textColor="@color/text_primary"
+                        android:textSize="19sp"
+                        android:fontFamily="sans-serif-medium"
+                        android:singleLine="true" />
+
+                    <TextView
+                        android:id="@+id/gpsDetail"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="GPS"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:fontFamily="sans-serif"
+                        android:singleLine="true" />
+
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/gpsNavLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Set a nav app"
+                    android:textColor="@color/text_tertiary"
+                    android:textSize="12sp"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="end" />
 
             </LinearLayout>
 
@@ -458,10 +638,10 @@
     <!-- Quick Actions Card -->
     <androidx.cardview.widget.CardView
         android:id="@+id/quickActionsCard"
-        android:layout_width="75dp"
+        android:layout_width="110dp"
         android:layout_height="0dp"
         app:cardBackgroundColor="@color/card_background"
-        app:cardCornerRadius="20dp"
+        app:cardCornerRadius="24dp"
         app:cardElevation="0dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent"
@@ -472,7 +652,7 @@
             android:layout_height="match_parent"
             android:orientation="vertical"
             android:gravity="center"
-            android:padding="6dp">
+            android:padding="10dp">
 
             <!-- CarPlay Button -->
             <LinearLayout
@@ -485,15 +665,15 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:background="?attr/selectableItemBackground"
-                android:padding="8dp">
+                android:padding="10dp">
 
                 <ImageView
                     android:id="@+id/carPlayIcon"
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
                     android:src="@drawable/ic_carplay_selector"
                     android:scaleType="fitCenter"
-                    android:layout_marginBottom="4dp"
+                    android:layout_marginBottom="6dp"
                     android:enabled="false" />
 
                 <TextView
@@ -502,7 +682,7 @@
                     android:layout_height="wrap_content"
                     android:text="CarPlay"
                     android:textColor="@color/text_primary"
-                    android:textSize="12sp"
+                    android:textSize="13sp"
                     android:fontFamily="sans-serif-medium" />
 
             </LinearLayout>
@@ -511,11 +691,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:background="#30FFFFFF"
-                android:layout_marginVertical="8dp" />
+                android:layout_marginVertical="10dp" />
 
-            <!-- HVAC Button -->
+            <!-- Launcher settings; the Climate button here duplicated the tile. -->
             <LinearLayout
-                android:id="@+id/hvacButton"
+                android:id="@+id/menuButton"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
@@ -524,21 +704,22 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:background="?attr/selectableItemBackground"
-                android:padding="8dp">
+                android:padding="10dp">
 
                 <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:src="@drawable/ic_hvac"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_menu_hamburger"
                     android:scaleType="fitCenter"
-                    android:layout_marginBottom="4dp" />
+                    android:layout_marginBottom="6dp"
+                    android:contentDescription="Launcher settings" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Climate"
+                    android:text="Menu"
                     android:textColor="@color/text_primary"
-                    android:textSize="12sp"
+                    android:textSize="13sp"
                     android:fontFamily="sans-serif-medium" />
 
             </LinearLayout>
@@ -547,7 +728,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:background="#30FFFFFF"
-                android:layout_marginVertical="8dp" />
+                android:layout_marginVertical="10dp" />
 
             <!-- Settings Button -->
             <LinearLayout
@@ -560,21 +741,21 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:background="?attr/selectableItemBackground"
-                android:padding="8dp">
+                android:padding="10dp">
 
                 <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
                     android:src="@drawable/ic_settings"
                     android:scaleType="fitCenter"
-                    android:layout_marginBottom="4dp" />
+                    android:layout_marginBottom="6dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="Settings"
                     android:textColor="@color/text_primary"
-                    android:textSize="12sp"
+                    android:textSize="13sp"
                     android:fontFamily="sans-serif-medium" />
 
             </LinearLayout>
@@ -583,11 +764,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
                 android:background="#30FFFFFF"
-                android:layout_marginVertical="8dp" />
+                android:layout_marginVertical="10dp" />
 
-            <!-- Launcher Button -->
+            <!-- Apps Button (opens the full app drawer, which pins the SAIC launcher) -->
             <LinearLayout
-                android:id="@+id/launcherButton"
+                android:id="@+id/appsButton"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
                 android:layout_weight="1"
@@ -596,21 +777,21 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:background="?attr/selectableItemBackground"
-                android:padding="8dp">
+                android:padding="10dp">
 
                 <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:src="@drawable/ic_launcher_saic"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_launcher"
                     android:scaleType="fitCenter"
-                    android:layout_marginBottom="4dp" />
+                    android:layout_marginBottom="6dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="MG4"
+                    android:text="Apps"
                     android:textColor="@color/text_primary"
-                    android:textSize="12sp"
+                    android:textSize="13sp"
                     android:fontFamily="sans-serif-medium" />
 
             </LinearLayout>

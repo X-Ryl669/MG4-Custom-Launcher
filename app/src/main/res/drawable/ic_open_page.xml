@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <!-- Box with an arrow leaving it: opens the full climate page. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M5,5h6v2H7v10h10v-4h2v6H5V5z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M13,5h6v6h-2V8.41l-6.29,6.3l-1.42,-1.42L15.59,7H13V5z" />
+</vector>

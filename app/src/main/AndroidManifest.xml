@@ -29,6 +29,55 @@
     <uses-permission android:name="android.permission.CONNECTIVITY_INTERNAL" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!-- Location: reading fixes, and standing in for the absent network provider. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_LOCATION_EXTRA_COMMANDS" />
+    <uses-permission android:name="android.permission.LOCATION_HARDWARE" />
+    <uses-permission android:name="android.permission.INSTALL_LOCATION_PROVIDER" />
+    <!--
+        Mock locations are how the relay publishes a "network" provider. The app op
+        behind this normally has to be granted by picking the app in developer
+        options; LocationRelayService grants it to itself instead, which works only
+        because we are platform-signed and can hold MANAGE_APP_OPS_MODES.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION" />
+    <uses-permission android:name="android.permission.UPDATE_APP_OPS_STATS" />
+    <uses-permission android:name="android.permission.MANAGE_APP_OPS_MODES" />
+
+    <!--
+        Package visibility (targetSdk 33): without these, getPackageInfo() and
+        getLaunchIntentForPackage() cannot see the SAIC system apps, so trim
+        detection in SaicPackages would always report "not installed".
+        Both trims are listed: com.saicmotor.* is Standard/SE,
+        com.saicmotor.hmi.* is Luxury/Trophy.
+    -->
+    <queries>
+        <!-- Standard / SE (EH32) -->
+        <package android:name="com.saicmotor.launcher" />
+        <package android:name="com.saicmotor.hvac" />
+        <package android:name="com.saicmotor.vehiclesetting" />
+        <package android:name="com.saicmotor.btphone" />
+        <package android:name="com.saicmotor.radio" />
+        <package android:name="com.saicmotor.media" />
+        <package android:name="com.saicmotor.settings" />
+        <package android:name="com.saicmotor.avm" />
+        <package android:name="com.saicmotor.evs" />
+        <!-- Luxury / Trophy -->
+        <package android:name="com.saicmotor.hmi.launcher" />
+        <package android:name="com.saicmotor.hmi.hvac" />
+        <package android:name="com.saicmotor.hmi.vehiclesettings" />
+        <package android:name="com.saicmotor.hmi.btcall" />
+        <package android:name="com.saicmotor.hmi.radio" />
+        <package android:name="com.saicmotor.hmi.music" />
+        <package android:name="com.saicmotor.hmi.systemsettings" />
+        <package android:name="com.saicmotor.hmi.aroundview" />
+        <!-- Shared between trims -->
+        <package android:name="com.saicmotor.service.vehicle" />
+        <package android:name="com.allgo.rui" />
+        <package android:name="com.allgo.carplay.service" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:debuggable="true"
@@ -71,11 +120,29 @@
             android:exported="false"
             android:theme="@style/AppTheme" />
 
-        <!-- Vehicle Service Connection -->
-        <service
-            android:name=".service.VehicleDataService"
-            android:enabled="true"
-            android:exported="false" />
+        <!-- Media Browser (Bluetooth AVRCP tree + radio stations) -->
+        <activity
+            android:name=".MediaBrowseActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <!-- Launcher's own settings + diagnostics, from the hamburger button -->
+        <activity
+            android:name=".LauncherSettingsActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <!-- Live BMS property dump, for calibrating the energy tile -->
+        <activity
+            android:name=".BmsDebugActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
+        <!-- App Drawer -->
+        <activity
+            android:name=".AppDrawerActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
 
         <!-- Media Listener Service -->
         <service
@@ -90,6 +157,15 @@
         <!-- IPv4 -> IPv6 ADB proxy service (0.0.0.0:35555 -> ::1:5555) -->
         <service
             android:name=".service.AdbV4ProxyService"
+            android:enabled="true"
+            android:exported="false" />
+
+        <!--
+            Republishes GPS fixes as a "network"/"fused" provider, because this
+            trim ships neither. Toggled from the launcher menu, never automatic.
+        -->
+        <service
+            android:name=".location.LocationRelayService"
             android:enabled="true"
             android:exported="false" />
 

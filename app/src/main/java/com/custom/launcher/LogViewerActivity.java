@@ -15,6 +15,9 @@ import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.custom.launcher.util.LogTee;
+import com.custom.launcher.util.LogUtils;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileWriter;
@@ -39,6 +42,15 @@ public class LogViewerActivity extends AppCompatActivity {
     private volatile boolean isPaused = false;
     private String lastLogContent = "";
     private Button btnPauseLogs;
+    private Button btnSaveLogs;
+
+    /**
+     * Start filtered to our own tags. Unfiltered was the default before, and it
+     * made the viewer useless: this car's Bluetooth stack and TBox NMEA feed
+     * generate hundreds of lines a second, so 200 lines of logcat never contained
+     * a single line of ours. "All" is still one tap away.
+     */
+    private volatile boolean appTagsOnly = true;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,7 +62,7 @@ public class LogViewerActivity extends AppCompatActivity {
         btnPauseLogs = findViewById(R.id.btnPauseLogs);
         Button btnRefreshLogs = findViewById(R.id.btnRefreshLogs);
         Button btnClearLogs = findViewById(R.id.btnClearLogs);
-        Button btnSaveLogs = findViewById(R.id.btnSaveLogs);
+        btnSaveLogs = findViewById(R.id.btnSaveLogs);
         Button btnClose = findViewById(R.id.btnClose);
         Button btnUsbDebug = findViewById(R.id.btnUsbDebug);
 
@@ -99,8 +111,19 @@ public class LogViewerActivity extends AppCompatActivity {
             }
         });
 
-        // Save to USB button
-        btnSaveLogs.setOnClickListener(v -> saveLogsToUsb());
+        // Save button: writes the full teed history, not just what is on screen.
+        btnSaveLogs.setText("Save");
+        btnSaveLogs.setOnClickListener(v -> saveLogs());
+
+        // Long-press the Pause button to toggle between our tags and everything.
+        btnPauseLogs.setOnLongClickListener(v -> {
+            appTagsOnly = !appTagsOnly;
+            Toast.makeText(this, appTagsOnly ? "Showing app logs only" : "Showing all system logs",
+                    Toast.LENGTH_SHORT).show();
+            stopLogReader();
+            logHandler.postDelayed(this::startLogReader, 200);
+            return true;
+        });
 
         // Close button
         btnClose.setOnClickListener(v -> finish());
@@ -141,11 +164,23 @@ public class LogViewerActivity extends AppCompatActivity {
                         logcatProcess.destroy();
                     }
 
-                    // Get ALL system logs (last 200 lines)
-                    String[] command = {
-                            "logcat", "-d", "-v", "time", "-t", "200"
-                    };
-                    logcatProcess = Runtime.getRuntime().exec(command);
+                    java.util.List<String> command = new java.util.ArrayList<>();
+                    command.add("logcat");
+                    command.add("-d");
+                    command.add("-v");
+                    command.add("time");
+                    command.add("-t");
+                    // Our tags are sparse, so a filtered view can afford a much
+                    // deeper window than an unfiltered one.
+                    command.add(appTagsOnly ? "1000" : "200");
+                    if (appTagsOnly) {
+                        command.add("-s");
+                        for (String spec : LogUtils.logcatFilterSpec()) {
+                            command.add(spec);
+                        }
+                    }
+                    logcatProcess = new ProcessBuilder(command)
+                            .redirectErrorStream(true).start();
 
                     BufferedReader reader = new BufferedReader(
                             new InputStreamReader(logcatProcess.getInputStream()));
@@ -168,7 +203,10 @@ public class LogViewerActivity extends AppCompatActivity {
                         }
                         newContent = reversed.toString();
                     } else {
-                        newContent = "No logs found\n";
+                        newContent = appTagsOnly
+                                ? "No app log lines in the buffer.\n"
+                                  + "Long-press Pause to show all system logs.\n"
+                                : "No logs found\n";
                     }
 
                     // Only update UI if content actually changed and not paused
@@ -185,11 +223,16 @@ public class LogViewerActivity extends AppCompatActivity {
                                     "MainActivity",
                                     "LogViewerActivity",
                                     "UsbDebugActivity",
-                                    "VehicleDataService",
+                                    "EnergyTileController",
+                                    "CarPropertyClient",
                                     "HeatingControlService",
                                     "MediaListenerService",
+                                    "MediaBrowseActivity",
+                                    "BluetoothArtCache",
                                     "CarPlayService",
-                                    "SaicMediaService"
+                                    "HvacTileController",
+                                    "HvacClient",
+                                    "CarAdapter"
                             };
 
                             // SAIC SDK classes
@@ -291,72 +334,59 @@ public class LogViewerActivity extends AppCompatActivity {
     }
 
     /**
-     * Save logs to USB stick
+     * Saves the log where the user can actually get at it.
+     *
+     * <p>
+     * This used to hunt for a USB mount point and write only the ~200 lines
+     * currently on screen. Neither half worked: no stick was mounted at any of
+     * the guessed paths, and the on-screen window had already lost everything
+     * interesting. Now it copies {@link LogTee}'s full history into
+     * {@code Download/}, which the stock Files app can browse, and falls back to
+     * the visible buffer if the tee never got started.
      */
-    private void saveLogsToUsb() {
+    private void saveLogs() {
         new Thread(() -> {
             try {
-                // Common USB mount points
-                String[] usbPaths = {
-                        "/storage/usb",
-                        "/mnt/usb",
-                        "/mnt/media_rw",
-                        "/storage/usbdisk",
-                        "/mnt/usb_storage",
-                        "/mnt/usbhost"
-                };
-
-                File usbDir = null;
-                for (String path : usbPaths) {
-                    File dir = new File(path);
-                    if (dir.exists() && dir.isDirectory() && dir.canWrite()) {
-                        usbDir = dir;
-                        break;
-                    }
-                    // Also check subdirectories
-                    if (dir.exists() && dir.isDirectory()) {
-                        File[] subdirs = dir.listFiles();
-                        if (subdirs != null) {
-                            for (File subdir : subdirs) {
-                                if (subdir.isDirectory() && subdir.canWrite()) {
-                                    usbDir = subdir;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if (usbDir != null)
-                        break;
-                }
-
-                if (usbDir == null) {
-                    runOnUiThread(() -> Toast.makeText(this,
-                            "USB stick not found. Check if USB is connected.",
-                            Toast.LENGTH_LONG).show());
+                File downloads = new File("/storage/emulated/0/Download");
+                if (!downloads.isDirectory() && !downloads.mkdirs()) {
+                    toast("Cannot write to " + downloads);
                     return;
                 }
 
-                // Create log file with timestamp
                 String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
                         .format(new Date());
-                File logFile = new File(usbDir, "custom_launcher_logs_" + timestamp + ".txt");
+                File out = new File(downloads, "mg4-launcher-" + timestamp + ".txt");
 
-                // Write logs to file
-                FileWriter writer = new FileWriter(logFile);
-                writer.write(lastLogContent);
-                writer.close();
+                File teed = LogTee.logFile();
+                long copied = 0;
+                try (FileWriter writer = new FileWriter(out)) {
+                    if (teed.isFile() && teed.length() > 0) {
+                        try (BufferedReader reader = new BufferedReader(new java.io.FileReader(teed))) {
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                writer.write(line);
+                                writer.write('\n');
+                                copied++;
+                            }
+                        }
+                    } else {
+                        writer.write("(log tee empty - dumping the on-screen buffer instead)\n");
+                        writer.write(lastLogContent);
+                    }
+                }
 
-                String finalPath = logFile.getAbsolutePath();
-                runOnUiThread(() -> Toast.makeText(this,
-                        "Logs saved to: " + finalPath,
-                        Toast.LENGTH_LONG).show());
-
+                final long lines = copied;
+                toast("Saved " + (lines > 0 ? lines + " lines" : "on-screen buffer")
+                        + " to Download/" + out.getName());
+                Log.i(TAG, "Saved log to " + out.getAbsolutePath());
             } catch (Exception e) {
-                Log.e(TAG, "Error saving logs to USB", e);
-                runOnUiThread(() -> Toast.makeText(this,
-                        "Error saving logs: " + e.getMessage(),
-                        Toast.LENGTH_LONG).show());
+                Log.e(TAG, "Error saving logs", e);
+                toast("Error saving logs: " + e.getMessage());
             }
         }).start();
+    }
+
+    private void toast(String message) {
+        runOnUiThread(() -> Toast.makeText(this, message, Toast.LENGTH_LONG).show());
     }
 }

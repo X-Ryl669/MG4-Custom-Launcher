@@ -25,7 +25,15 @@ public class HeatingControlService {
     }
 
     public interface HeatingStatusListener {
-        void onHeatingStatusChanged(int drvSeatLevel, int psgSeatLevel, int wheelLevel);
+        /**
+         * A level of {@code null} means the car has no such hardware — that is how
+         * {@code AirConditionBean} reports an absent feature, and it is the only
+         * signal there is. This used to be three plain ints with null coerced to
+         * 0, which is why an SE with no heated seats still showed working-looking
+         * seat buttons that did nothing.
+         */
+        void onHeatingStatusChanged(Integer drvSeatLevel, Integer psgSeatLevel,
+                Integer wheelLevel);
 
         void onConnectionStatusChanged(boolean connected);
     }
@@ -155,15 +163,15 @@ public class HeatingControlService {
             // Get steering wheel heating level (0 or 1)
             Integer wheelLevel = bean.getSteeringWheelHeatLevel();
 
-            Log.d(TAG, String.format("[HEATING] Status from vehicle: DrvSeat=%d, PsgSeat=%d, Wheel=%d",
-                    drvSeatLevel, psgSeatLevel, wheelLevel));
+            // Logged at INFO, and with nulls shown as null rather than 0, because
+            // which of these the car answers is exactly the open question: null
+            // means "not fitted", 0 means "fitted and off", and the two look
+            // identical once they have been coerced.
+            Log.i(TAG, "[HEATING] Status from vehicle: DrvSeat=" + drvSeatLevel
+                    + ", PsgSeat=" + psgSeatLevel + ", Wheel=" + wheelLevel);
 
-            // Notify listener
             if (statusListener != null) {
-                statusListener.onHeatingStatusChanged(
-                        drvSeatLevel != null ? drvSeatLevel : 0,
-                        psgSeatLevel != null ? psgSeatLevel : 0,
-                        wheelLevel != null ? wheelLevel : 0);
+                statusListener.onHeatingStatusChanged(drvSeatLevel, psgSeatLevel, wheelLevel);
             }
 
         } catch (Exception e) {

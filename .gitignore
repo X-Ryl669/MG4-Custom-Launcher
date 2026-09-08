@@ -184,3 +184,7 @@ mg_firmware/*
 !mg_firmware/.gitkeep
 !mg_firmware/*.sh
 sdk_extraction
+
+# Platform signing keys fetched by sign_apk.sh (public AOSP test keys, but build artifacts)
+platform.pk8
+platform.x509.pem

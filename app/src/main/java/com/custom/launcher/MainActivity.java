@@ -6,6 +6,7 @@ import java.util.Date;
 import java.util.Locale;
 
 import android.app.AlertDialog;
+import android.content.pm.PackageManager;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.media.session.MediaController;
@@ -28,19 +29,27 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.cardview.widget.CardView;
 import com.custom.launcher.service.CarPlayService;
-import com.custom.launcher.service.CarPlayService;
 import com.custom.launcher.service.HeatingControlService;
+import com.custom.launcher.media.BluetoothConnectionReceiver;
+import com.custom.launcher.media.MediaSources;
+import com.custom.launcher.saic.SaicSourceSwitch;
 import com.custom.launcher.service.MediaListenerService;
-import com.custom.launcher.service.VehicleDataService;
+import com.custom.launcher.util.LauncherPrefs;
+import com.custom.launcher.util.LogTee;
 import com.custom.launcher.util.LogUtils;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "CustomLauncher";
 
-    private TextView timeText;
-    private TextView dateText;
-    private TextView batteryText;
-    private TextView rangeText;
+    /** Raised by the launcher settings screen to reuse this activity's picker. */
+    static final String ACTION_PICK_NAV_APP = "com.custom.launcher.PICK_NAV_APP";
+
+    private HvacTileController hvacTile;
+    private EnergyTileController energyTile;
+    private GpsTileController gpsTile;
+    private TextView mediaSourceLabel;
+    private final BluetoothConnectionReceiver btArtCacheReceiver = new BluetoothConnectionReceiver();
+    private TextView batteryLabel;
     private TextView songTitle;
     private TextView artistName;
     private TextView currentTime;
@@ -66,11 +75,16 @@ public class MainActivity extends AppCompatActivity {
     private int rightSeatLevel = 0;
     private boolean wheelHeating = false;
 
-    private VehicleDataService vehicleDataService;
     private HeatingControlService heatingControlService;
+    /**
+     * Whether the car has each heating feature. Start false so nothing shows
+     * until the car has said it exists — the previous default was "visible", and
+     * on a car without the hardware nothing ever came along to correct it.
+     */
+    private boolean hasLeftSeatHeating;
+    private boolean hasRightSeatHeating;
+    private boolean hasWheelHeating;
     private CarPlayService carPlayService;
-    private Handler timeHandler;
-    private Runnable timeRunnable;
     private Handler progressHandler;
     private Runnable progressRunnable;
     private MediaController activeMediaController;
@@ -79,19 +93,6 @@ public class MainActivity extends AppCompatActivity {
     private final Runnable retryRunnable = new Runnable() {
         @Override
         public void run() {
-            // Retry vehicle data service
-            if (vehicleDataService != null && !vehicleDataService.isConnected()) {
-                Log.i(TAG, "[RETRY] Retrying vehicle service connection (attempt at " +
-                        new SimpleDateFormat("HH:mm:ss", Locale.UK).format(new Date()) + ")");
-                try {
-                    vehicleDataService.bind();
-                } catch (Exception e) {
-                    LogUtils.logError(TAG, "[RETRY] ✗ Exception during retry", e);
-                }
-            } else if (vehicleDataService != null && vehicleDataService.isConnected()) {
-                Log.i(TAG, "[RETRY] Vehicle service is now connected");
-            }
-
             // Retry heating control service
             if (heatingControlService != null && !heatingControlService.isConnected()) {
                 Log.i(TAG, "[RETRY] Retrying heating service connection (attempt at " +
@@ -105,9 +106,9 @@ public class MainActivity extends AppCompatActivity {
                 Log.i(TAG, "[RETRY] Heating service is now connected");
             }
 
-            // Continue retrying if either service is not connected
-            boolean shouldRetry = (vehicleDataService != null && !vehicleDataService.isConnected()) ||
-                    (heatingControlService != null && !heatingControlService.isConnected());
+            // The energy tile manages its own CarService binding, so only the
+            // heating service still needs this retry loop.
+            boolean shouldRetry = heatingControlService != null && !heatingControlService.isConnected();
             if (shouldRetry) {
                 retryHandler.removeCallbacks(this);
                 retryHandler.postDelayed(this, RETRY_INTERVAL_MS);
@@ -137,6 +138,12 @@ public class MainActivity extends AppCompatActivity {
         // Initialize logging FIRST to ensure all log levels are enabled
         LogUtils.initializeLogging();
 
+        // Mirror our own log lines to Download/, because logcat's buffer on this
+        // car turns over in well under a second: a log captured from the car
+        // contained 201 lines, none of them ours. Without this there is no way to
+        // get a diagnostic off the vehicle.
+        LogTee.start();
+
         setContentView(R.layout.activity_main);
 
         // Log display metrics immediately on startup
@@ -147,7 +154,67 @@ public class MainActivity extends AppCompatActivity {
         checkNotificationListenerPermission();
         setupVehicleService();
         setupMediaService();
-        startTimeUpdates();
+        startProgressUpdates();
+        hvacTile = new HvacTileController(this);
+        energyTile = new EnergyTileController(this);
+        gpsTile = new GpsTileController(this);
+        // Nothing has told us what this car has yet, so hide the lot until it does.
+        applyHeatingAvailability();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handlePickNavAppRequest(intent);
+    }
+
+    /**
+     * The settings screen cannot show this picker itself and then have the tile
+     * relabel, so it bounces the request back here where both the dialog and the
+     * tile live.
+     */
+    private void handlePickNavAppRequest(Intent intent) {
+        if (intent != null && ACTION_PICK_NAV_APP.equals(intent.getAction())) {
+            // Consumed, so a configuration change does not raise it again.
+            intent.setAction(null);
+            pickNavigationApp();
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (hvacTile != null) {
+            hvacTile.onStart();
+        }
+        if (energyTile != null) {
+            energyTile.onStart();
+        }
+        if (gpsTile != null) {
+            gpsTile.onStart();
+        }
+        // The car may have answered while we were away, and the override may have
+        // been flipped in the launcher menu.
+        applyHeatingAvailability();
+        handlePickNavAppRequest(getIntent());
+        btArtCacheReceiver.register(this);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // Stop polling the car for climate state while we're not on screen.
+        if (hvacTile != null) {
+            hvacTile.onStop();
+        }
+        if (energyTile != null) {
+            energyTile.onStop();
+        }
+        if (gpsTile != null) {
+            gpsTile.onStop();
+        }
+        btArtCacheReceiver.unregister(this);
     }
 
     /**
@@ -225,10 +292,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initializeViews() {
-        timeText = findViewById(R.id.timeText);
-        dateText = findViewById(R.id.dateText);
-        batteryText = findViewById(R.id.batteryText);
-        rangeText = findViewById(R.id.rangeText);
+        batteryLabel = findViewById(R.id.batteryLabel);
         songTitle = findViewById(R.id.songTitle);
         artistName = findViewById(R.id.artistName);
         currentTime = findViewById(R.id.currentTime);
@@ -276,15 +340,19 @@ public class MainActivity extends AppCompatActivity {
             Log.w(TAG, "wheelButton not found in layout");
         }
 
-        // Setup debug triple-tap on clock
-        timeText.setOnClickListener(v -> handleClockTap());
-
-        // Long press on clock to show context menu
-        registerForContextMenu(timeText);
-        timeText.setOnLongClickListener(v -> {
-            v.showContextMenu();
-            return true;
-        });
+        // The debug handles were a triple-tap and long-press on the battery card's
+        // 10sp label, which turned out to be near-impossible to hit in a parked car
+        // and impossible in a moving one. Everything is now reachable from the
+        // hamburger menu; the long-press context menu stays, moved onto that
+        // button, for the extra items the settings screen does not list.
+        View menuButton = findViewById(R.id.menuButton);
+        if (menuButton != null) {
+            registerForContextMenu(menuButton);
+            menuButton.setOnLongClickListener(v -> {
+                v.showContextMenu();
+                return true;
+            });
+        }
 
         progressBar = findViewById(R.id.progressBar);
 
@@ -304,10 +372,17 @@ public class MainActivity extends AppCompatActivity {
             sendMediaButtonCommand(KeyEvent.KEYCODE_MEDIA_NEXT);
         });
 
-        // Setup battery card click to open Charge Management
-        batteryCard.setOnClickListener(v -> {
-            openChargeManagement();
-        });
+        mediaSourceLabel = findViewById(R.id.mediaSourceLabel);
+
+        View browseButton = findViewById(R.id.browseButton);
+        if (browseButton != null) {
+            browseButton.setOnClickListener(v -> openMediaBrowser());
+        }
+
+        // The battery card used to open the car's charge-management screen on tap.
+        // Removed: a tap on an energy gauge landing in the vehicle-settings app was
+        // the wrong destination, and it fired by accident constantly. The tile is
+        // display-only for now.
 
         // Setup quick action buttons
         findViewById(R.id.carPlayButton).setOnClickListener(v -> {
@@ -315,9 +390,9 @@ public class MainActivity extends AppCompatActivity {
             openCarPlay();
         });
 
-        findViewById(R.id.hvacButton).setOnClickListener(v -> {
-            Log.i(TAG, "HVAC button clicked!");
-            openHVAC();
+        findViewById(R.id.menuButton).setOnClickListener(v -> {
+            Log.i(TAG, "Menu button clicked!");
+            openLauncherSettings();
         });
 
         findViewById(R.id.settingsButton).setOnClickListener(v -> {
@@ -325,26 +400,10 @@ public class MainActivity extends AppCompatActivity {
             openSettings();
         });
 
-        findViewById(R.id.launcherButton).setOnClickListener(v -> {
-            Log.i(TAG, "Launcher button clicked!");
-            openOriginalLauncher();
+        findViewById(R.id.appsButton).setOnClickListener(v -> {
+            Log.i(TAG, "Apps button clicked!");
+            openAppDrawer();
         });
-    }
-
-    private void openChargeManagement() {
-        try {
-            Log.i(TAG, "Attempting to open Charge Management Activity...");
-            Intent intent = new Intent();
-            intent.setComponent(new ComponentName(
-                    "com.saicmotor.hmi.vehiclesettings",
-                    "com.saicmotor.hmi.vehiclesettings.chargemanagement.ui.ChargeManagementActivity"));
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-            Log.i(TAG, "✓ Successfully launched Charge Management Activity");
-        } catch (Exception e) {
-            Log.e(TAG, "✗ Failed to open Charge Management (expected on emulator): " + e.getMessage());
-            Log.i(TAG, "This will work on the actual MG4 car where vehiclesettings app is installed");
-        }
     }
 
     private void openCarPlay() {
@@ -373,14 +432,44 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void openHVAC() {
+    private void openMediaBrowser() {
+        try {
+            Log.i(TAG, "Opening media browser...");
+            startActivity(new Intent(this, MediaBrowseActivity.class));
+        } catch (Exception e) {
+            Log.e(TAG, "✗ Failed to open media browser: " + e.getMessage());
+            Toast.makeText(this, "Error opening browser", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Labels the tile with whichever source owns the active session. */
+    private void updateMediaSourceLabel() {
+        if (mediaSourceLabel == null) {
+            return;
+        }
+        mediaSourceLabel.setText(
+                MediaSources.labelForPackage(MediaListenerService.getActiveSourcePackage()));
+    }
+
+    private void openAppDrawer() {
+        try {
+            Log.i(TAG, "Opening app drawer...");
+            startActivity(new Intent(this, AppDrawerActivity.class));
+        } catch (Exception e) {
+            Log.e(TAG, "✗ Failed to open app drawer: " + e.getMessage());
+            Toast.makeText(this, "Error opening app list", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Package-visible so the climate tile can hand off to the full HVAC app. */
+    void openHVAC() {
         try {
             Log.i(TAG, "Attempting to open dedicated HVAC app...");
-            Intent intent = new Intent();
-            intent.setComponent(new ComponentName(
-                    "com.saicmotor.hmi.hvac",
-                    "com.saicmotor.hmi.hvac.HvacActivity"));
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            Intent intent = SaicPackages.buildLaunchIntent(this, SaicPackages.HVAC);
+            if (intent == null) {
+                Log.w(TAG, "✗ No HVAC app found on this head unit");
+                return;
+            }
             startActivity(intent);
             Log.i(TAG, "✓ Successfully launched HVAC app");
         } catch (Exception e) {
@@ -398,22 +487,6 @@ public class MainActivity extends AppCompatActivity {
             Log.i(TAG, "✓ Successfully launched Settings");
         } catch (Exception e) {
             Log.e(TAG, "✗ Failed to open Settings: " + e.getMessage());
-        }
-    }
-
-    private void openOriginalLauncher() {
-        try {
-            Log.i(TAG, "Attempting to open original SAIC launcher...");
-            Intent intent = new Intent();
-            intent.setComponent(new ComponentName(
-                    "com.saicmotor.hmi.launcher",
-                    "com.saicmotor.hmi.launcher.ui.MainActivity"));
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(intent);
-            Log.i(TAG, "✓ Successfully launched original SAIC launcher");
-        } catch (Exception e) {
-            Log.e(TAG, "✗ Failed to open original launcher (expected on emulator): " + e.getMessage());
-            Log.i(TAG, "This will work on the actual MG4 car where SAIC launcher is installed");
         }
     }
 
@@ -436,6 +509,16 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             Log.e(TAG, "Failed to open Shell Activity: " + e.getMessage());
             Toast.makeText(this, "Error opening shell", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Opens the launcher's own settings, which also hosts the diagnostics. */
+    private void openLauncherSettings() {
+        try {
+            startActivity(new Intent(this, LauncherSettingsActivity.class));
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to open launcher settings: " + e.getMessage());
+            Toast.makeText(this, "Error opening settings", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -534,6 +617,48 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    /** Inverts the car's level to the UI's, treating an absent feature as off. */
+    private static int toUiLevel(Integer apiLevel) {
+        if (apiLevel == null || apiLevel == 0) {
+            return 0;
+        }
+        return 4 - apiLevel;
+    }
+
+    /**
+     * Shows only the heating controls this car actually has, and hides the whole
+     * pill when it has none.
+     *
+     * <p>
+     * On an SE that is all three: the buttons were visible, changed icon when
+     * pressed, and did nothing, because the level came back null and was being
+     * read as 0. {@link LauncherPrefs#isHeatingHidden} is the manual override for
+     * a car that answers 0 instead of null, where there is no way to tell "not
+     * fitted" from "fitted and off".
+     */
+    private void applyHeatingAvailability() {
+        boolean forceHidden = LauncherPrefs.isHeatingHidden(this);
+
+        boolean left = hasLeftSeatHeating && !forceHidden;
+        boolean wheel = hasWheelHeating && !forceHidden;
+        boolean right = hasRightSeatHeating && !forceHidden;
+
+        setVisible(R.id.leftSeatButton, left);
+        setVisible(R.id.wheelButton, wheel);
+        setVisible(R.id.rightSeatButton, right);
+        // Dividers only earn their place between two visible segments.
+        setVisible(R.id.heatingDividerLeft, left && (wheel || right));
+        setVisible(R.id.heatingDividerRight, wheel && right);
+        setVisible(R.id.heatingPill, left || wheel || right);
+    }
+
+    private void setVisible(int viewId, boolean visible) {
+        View view = findViewById(viewId);
+        if (view != null) {
+            view.setVisibility(visible ? View.VISIBLE : View.GONE);
+        }
+    }
+
     private void updateSeatDisplay(ImageView icon, int level) {
         switch (level) {
             case 0:
@@ -595,57 +720,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void setupVehicleService() {
-        vehicleDataService = new VehicleDataService(this, new VehicleDataService.VehicleDataListener() {
-            @Override
-            public void onBatteryLevelChanged(int level) {
-                runOnUiThread(() -> {
-                    currentBatteryLevel = level;
-                    batteryText.setText(level + "%");
-                    updateBatteryFill(level);
-                });
-            }
-
-            @Override
-            public void onRangeChanged(int rangeKm) {
-                runOnUiThread(() -> {
-                    // Convert km to miles (1 km = 0.621371 miles)
-                    int rangeMiles = (int) Math.round(rangeKm * 0.621371);
-                    rangeText.setText(rangeMiles + " miles");
-                });
-            }
-
-            @Override
-            public void onConnectionStatusChanged(boolean connected) {
-                if (connected) {
-                    Log.i(TAG, "[RETRY] Vehicle service connected successfully, stopping retry loop");
-                    stopRetryLoop();
-                } else {
-                    Log.w(TAG, "[RETRY] Vehicle service connection failed, will retry");
-                    startRetryLoop();
-                }
-            }
-        });
-
-        vehicleDataService.bind();
-        // Start retry loop immediately in case first bind fails
-        startRetryLoop();
+        // Battery, range, power and consumption are owned by EnergyTileController,
+        // which reads AAOS CarService's BMS properties directly.
 
         // Initialize heating control service
         heatingControlService = new HeatingControlService(this);
         heatingControlService.setStatusListener(new HeatingControlService.HeatingStatusListener() {
             @Override
-            public void onHeatingStatusChanged(int drvSeatLevel, int psgSeatLevel, int wheelLevel) {
-                // Update UI with actual vehicle heating status
-                // SAIC API is inverted: API 1=High, 2=Med, 3=Low, so invert for UI
+            public void onHeatingStatusChanged(Integer drvSeatLevel, Integer psgSeatLevel,
+                    Integer wheelLevel) {
+                // SAIC API is inverted: API 1=High, 2=Med, 3=Low, so invert for UI.
+                // A null level means the car has no such hardware, and that
+                // segment of the pill disappears rather than pretending to work.
                 runOnUiThread(() -> {
-                    leftSeatLevel = (drvSeatLevel == 0) ? 0 : (4 - drvSeatLevel);
-                    rightSeatLevel = (psgSeatLevel == 0) ? 0 : (4 - psgSeatLevel);
-                    wheelHeating = (wheelLevel > 0);
+                    hasLeftSeatHeating = drvSeatLevel != null;
+                    hasRightSeatHeating = psgSeatLevel != null;
+                    hasWheelHeating = wheelLevel != null;
+
+                    leftSeatLevel = toUiLevel(drvSeatLevel);
+                    rightSeatLevel = toUiLevel(psgSeatLevel);
+                    wheelHeating = wheelLevel != null && wheelLevel > 0;
+
                     updateSeatDisplay(leftSeatIcon, leftSeatLevel);
                     updateSeatDisplay(rightSeatIcon, rightSeatLevel);
                     updateWheelDisplay();
-                    Log.d(TAG, String.format("Heating status from vehicle: L_API=%d->UI=%d, R_API=%d->UI=%d, W=%d",
-                            drvSeatLevel, leftSeatLevel, psgSeatLevel, rightSeatLevel, wheelLevel));
+                    applyHeatingAvailability();
                 });
             }
 
@@ -653,10 +752,7 @@ public class MainActivity extends AppCompatActivity {
             public void onConnectionStatusChanged(boolean connected) {
                 if (connected) {
                     Log.i(TAG, "[RETRY] Heating service connected successfully");
-                    // Check if vehicle service is also connected to stop retry loop
-                    if (vehicleDataService != null && vehicleDataService.isConnected()) {
-                        stopRetryLoop();
-                    }
+                    stopRetryLoop();
                 } else {
                     Log.w(TAG, "[RETRY] Heating service connection failed, will retry");
                     startRetryLoop();
@@ -751,6 +847,7 @@ public class MainActivity extends AppCompatActivity {
 
                 updatePlayPauseButton();
                 updateMediaProgress();
+                updateMediaSourceLabel();
 
                 // Update album art with blur background and desaturated foreground
                 if (albumArtBitmap != null) {
@@ -785,6 +882,28 @@ public class MainActivity extends AppCompatActivity {
         // Log.i(TAG, "updateActiveMediaController: " + activeMediaController);
     }
 
+    /**
+     * Asks the car to make the tile's current source active, so a following
+     * {@code play()} is not silently ignored.
+     *
+     * <p>
+     * Best-effort and fire-and-forget: if the source is already active the stock
+     * services treat it as a no-op, and if the package is not on this trim
+     * {@link SaicSourceSwitch} logs and returns false.
+     */
+    private void requestSourceForActiveController() {
+        String pkg = activeMediaController != null
+                ? activeMediaController.getPackageName() : null;
+        if (pkg == null) {
+            return;
+        }
+        if (MediaSources.isBluetooth(pkg)) {
+            SaicSourceSwitch.playBluetooth(this);
+        } else if (MediaSources.isRadio(pkg)) {
+            SaicSourceSwitch.playRadio(this);
+        }
+    }
+
     private void sendMediaButtonCommand(int keyCode) {
         // Get active controller from MediaListenerService
         updateActiveMediaController();
@@ -815,12 +934,15 @@ public class MainActivity extends AppCompatActivity {
                         lastCommandWasPlay = false;
                         isMediaPlaying = false;
                     } else {
-                        Log.i(TAG, "Currently stopped/paused, checking if we should resume or play");
-                        // If state is stopped (1), it might have lost context
-                        // Try to use the last playing state to resume
-                        if (state != null && state.getState() == PlaybackState.STATE_STOPPED) {
-                            Log.i(TAG, "State is STOPPED - Radio FM lost context, play will start default");
-                        }
+                        Log.i(TAG, "Currently stopped/paused, requesting play");
+                        // A session that is not the car's active source ignores
+                        // play() outright - on the car this left the Bluetooth
+                        // session sitting in STATE_PAUSED however often it was
+                        // pressed, until the source was switched in the stock
+                        // launcher. So claim the source first, then play. See
+                        // SaicSourceSwitch for why Bluetooth is addressed as
+                        // com.saicmotor.media.
+                        requestSourceForActiveController();
                         controls.play();
                         lastCommandWasPlay = true;
                         isMediaPlaying = true;
@@ -837,21 +959,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void startTimeUpdates() {
-        timeHandler = new Handler(Looper.getMainLooper());
-        timeRunnable = new Runnable() {
-            @Override
-            public void run() {
-                updateTimeAndDate();
-                timeHandler.postDelayed(this, 1000); // Update every second
-            }
-        };
-        timeHandler.post(timeRunnable);
-
-        // Also start progress updates
-        startProgressUpdates();
-    }
-
     private void startProgressUpdates() {
         progressHandler = new Handler(Looper.getMainLooper());
         progressRunnable = new Runnable() {
@@ -866,18 +973,52 @@ public class MainActivity extends AppCompatActivity {
         progressHandler.post(progressRunnable);
     }
 
-    private void updateTimeAndDate() {
-        Date now = new Date();
+    /**
+     * Lets the user choose which app the GPS tile opens.
+     *
+     * <p>
+     * A picker rather than a default, because this trim ships no maps app at all
+     * — anything installed got sideloaded, and only the owner knows whether they
+     * want ABRP, a route planner, or something else. Package-visible so both the
+     * tile and the launcher menu can raise it.
+     */
+    void pickNavigationApp() {
+        PackageManager pm = getPackageManager();
+        Intent probe = new Intent(Intent.ACTION_MAIN);
+        probe.addCategory(Intent.CATEGORY_LAUNCHER);
 
-        SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm", Locale.UK);
-        timeText.setText(timeFormat.format(now));
+        java.util.List<android.content.pm.ResolveInfo> candidates =
+                pm.queryIntentActivities(probe, 0);
+        java.util.List<String> packages = new java.util.ArrayList<>();
+        java.util.List<String> labels = new java.util.ArrayList<>();
+        for (android.content.pm.ResolveInfo info : candidates) {
+            String pkg = info.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || packages.contains(pkg)) {
+                continue;
+            }
+            packages.add(pkg);
+            labels.add(info.loadLabel(pm).toString());
+        }
+        if (packages.isEmpty()) {
+            Toast.makeText(this, "No launchable apps found", Toast.LENGTH_SHORT).show();
+            return;
+        }
 
-        // Shorter date format to fit better: Day, dd Month
-        SimpleDateFormat dateFormat = new SimpleDateFormat("EEEE, dd MMMM", Locale.UK);
-        dateText.setText(dateFormat.format(now));
+        new AlertDialog.Builder(this)
+                .setTitle("Navigation app for the GPS tile")
+                .setItems(labels.toArray(new String[0]), (d, which) -> {
+                    LauncherPrefs.setNavPackage(this, packages.get(which));
+                    Log.i(TAG, "Navigation app set to " + packages.get(which));
+                    if (gpsTile != null) {
+                        gpsTile.onNavAppChanged();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
     }
 
-    private void updateBatteryFill(int level) {
+    /** Package-visible so EnergyTileController can drive the fill bar. */
+    void updateBatteryFill(int level) {
 
         // Update visual battery fill width (accounting for container padding) for
         // horizontal layout
@@ -1006,8 +1147,16 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
 
-        if (vehicleDataService != null) {
-            vehicleDataService.unbind();
+        if (hvacTile != null) {
+            hvacTile.onDestroy();
+        }
+
+        if (energyTile != null) {
+            energyTile.onDestroy();
+        }
+
+        if (gpsTile != null) {
+            gpsTile.onDestroy();
         }
 
         if (heatingControlService != null) {
@@ -1019,8 +1168,8 @@ public class MainActivity extends AppCompatActivity {
             carPlayService = null;
         }
 
-        if (timeHandler != null) {
-            timeHandler.removeCallbacks(timeRunnable);
+        if (progressHandler != null && progressRunnable != null) {
+            progressHandler.removeCallbacks(progressRunnable);
         }
 
         if (retryHandler != null && retryRunnable != null) {

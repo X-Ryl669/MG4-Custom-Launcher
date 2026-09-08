@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="ArcSliderView">
+        <!-- Caption under the value, e.g. "TEMP" or "FAN". -->
+        <attr name="arcLabel" format="string" />
+    </declare-styleable>
+</resources>
