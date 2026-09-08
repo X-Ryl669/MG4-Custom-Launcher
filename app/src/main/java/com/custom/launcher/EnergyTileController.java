@@ -1,5 +1,8 @@
 package com.custom.launcher;
 
+import static android.os.Debug.isDebuggerConnected;
+
+import android.content.pm.ApplicationInfo;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -36,7 +39,7 @@ public class EnergyTileController implements CarPropertyClient.Listener {
     /** Poll cadence while the launcher is in the foreground. */
     private static final long POLL_INTERVAL_MS = 2000L;
     /** How often a consumption sample is appended to the graph history. */
-    private static final long SAMPLE_INTERVAL_MS = 30_000L;
+    private static final long SAMPLE_INTERVAL_MS = 1000; //30_000L;
 
     /**
      * Confirmed on-car: the property is already kWh/100km. While driving the tile
@@ -85,6 +88,8 @@ public class EnergyTileController implements CarPropertyClient.Listener {
      * power/consumption row, which between them left the graph 60dp of the tile.
      */
     private final TextView statsText;
+    private final TextView batteryPercent;
+    private final TextView batteryRange;
     private final TextView graphCaption;
     private final ConsumptionGraphView graph;
     private final View batteryFill;
@@ -113,6 +118,8 @@ public class EnergyTileController implements CarPropertyClient.Listener {
         this.graphCaption = activity.findViewById(R.id.graphCaption);
         this.graph = activity.findViewById(R.id.consumptionGraph);
         this.batteryFill = activity.findViewById(R.id.batteryFill);
+        this.batteryPercent = activity.findViewById(R.id.batteryPercent);
+        this.batteryRange = activity.findViewById(R.id.batteryRange);
 
         this.history = new ConsumptionHistory(activity);
         if (graph != null) {
@@ -164,6 +171,19 @@ public class EnergyTileController implements CarPropertyClient.Listener {
 
     private void refresh() {
         if (car == null || !car.isReady()) {
+            if ( isDebuggerConnected()  ) {
+                // DEBUG HERE:
+                float soc = (float) (Math.random() * 100f);
+                float kw = (float) (Math.random() * 30f - 10f);
+                float consumption = (float) (Math.random() * 25f - 4f);
+
+
+                renderStats(soc, (int)Math.floor(soc * 3.5), kw, consumption, -1);
+                updateBatteryFill(soc);
+                maybeSample(consumption);
+                return;
+            }
+
             showUnavailable();
             return;
         }
@@ -238,15 +258,17 @@ public class EnergyTileController implements CarPropertyClient.Listener {
             return Float.NaN;
         }
 
-        float kw = Math.abs(amps * volts * POWER_SCALE);
+        float kw = (amps * volts * POWER_SCALE);
         if (kw > MAX_PLAUSIBLE_KW) {
             Log.w(TAG, "Implausible power " + kw + " kW from " + amps + "A x " + volts
                     + "V - POWER_SCALE likely needs calibration");
             return Float.NaN;
         }
 
-        int chargeStatus = car.getInt(BmsProperties.CHARGE_STATUS, -1);
-        return BmsProperties.isCharging(chargeStatus) ? -kw : kw;
+        // The current is signed (while regenerating), so this value is signed too
+        return kw;
+//        int chargeStatus = car.getInt(BmsProperties.CHARGE_STATUS, -1);
+//        return BmsProperties.isCharging(chargeStatus) ? -kw : kw;
     }
 
     /**
@@ -357,23 +379,22 @@ public class EnergyTileController implements CarPropertyClient.Listener {
         StringBuilder line = new StringBuilder();
         line.append(Float.isNaN(kw)
                 ? "-- kW"
-                : String.format(java.util.Locale.US, "%s%.1f kW", kw < 0 ? "+" : "", Math.abs(kw)));
+                : String.format(java.util.Locale.US, "%.1f kW", kw));
         line.append("  ·  ");
         line.append(Float.isNaN(consumption)
                 ? "-- kWh/100km"
                 : String.format(java.util.Locale.US, "%.1f kWh/100km", consumption));
-        line.append("  ·  ");
-        line.append(Float.isNaN(soc)
-                ? "--%"
-                : String.format(java.util.Locale.US, "%.0f%%", soc));
-        line.append("  ·  ");
-        line.append(rangeKm < 0 ? "-- km" : rangeKm + " km");
-
         if (chargingMinutes >= 0) {
             line.append("  ·  ").append(chargingMinutes).append(" min to full");
         }
 
         statsText.setText(line);
+        batteryPercent.setText(Float.isNaN(soc)
+                ? "--%"
+                : String.format(java.util.Locale.US, "%.0f%%", soc));
+        batteryRange.setText(rangeKm < 0 ? "-- km" : rangeKm + " km");
+
+
     }
 
     /**
@@ -403,7 +424,13 @@ public class EnergyTileController implements CarPropertyClient.Listener {
 
     private void showUnavailable() {
         if (statsText != null) {
-            statsText.setText("-- kW  ·  -- kWh/100km  ·  --%  ·  -- km");
+            statsText.setText("-- kW  ·  -- kWh/100km");
+        }
+        if (batteryPercent != null) {
+            batteryPercent.setText("-- %");
+        }
+        if (batteryRange != null) {
+            batteryRange.setText("-- km");
         }
     }
 }

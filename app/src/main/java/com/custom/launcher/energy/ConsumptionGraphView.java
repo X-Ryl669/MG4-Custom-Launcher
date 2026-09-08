@@ -32,7 +32,7 @@ public class ConsumptionGraphView extends View {
     private static final float[] NICE_CEILINGS = { 10f, 15f, 20f, 30f, 40f, 60f, 80f, 100f };
 
     /** Gridlines at these fractions of the ceiling, plus the zero baseline. */
-    private static final float[] GRID_FRACTIONS = { 1f / 3f, 2f / 3f, 1f };
+    private static final float[] GRID_FRACTIONS = { 1f / 4f, 2f / 4f, 3f / 4f, 1f };
 
     private static final float LABEL_GUTTER_DP = 26f;
 
@@ -40,11 +40,13 @@ public class ConsumptionGraphView extends View {
     private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint gridLabelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint fillRegainPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint averagePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint endpointPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     private final Path linePath = new Path();
     private final Path fillPath = new Path();
+    private final Path fillRegainPath = new Path();
     private final Path averagePath = new Path();
 
     private List<ConsumptionHistory.Sample> samples;
@@ -77,6 +79,9 @@ public class ConsumptionGraphView extends View {
         fillPaint.setStyle(Paint.Style.FILL);
         fillPaint.setColor(Color.parseColor("#3030d158"));
 
+        fillRegainPaint.setStyle(Paint.Style.FILL);
+        fillRegainPaint.setColor(Color.parseColor("#603380ff"));
+
         averagePaint.setStyle(Paint.Style.STROKE);
         averagePaint.setStrokeWidth(1f * density);
         averagePaint.setColor(Color.parseColor("#59636366"));
@@ -91,7 +96,7 @@ public class ConsumptionGraphView extends View {
         gridPaint.setColor(0x26FFFFFF);
 
         gridLabelPaint.setColor(0x73FFFFFF);
-        gridLabelPaint.setTextSize(9f * getResources().getDisplayMetrics().scaledDensity);
+        gridLabelPaint.setTextSize(20f * getResources().getDisplayMetrics().scaledDensity);
         gridLabelPaint.setTextAlign(Paint.Align.RIGHT);
 
         labelGutter = LABEL_GUTTER_DP * density;
@@ -112,6 +117,7 @@ public class ConsumptionGraphView extends View {
         }
         return (float) (Math.ceil(max / 100f) * 100f);
     }
+
 
     public void setSamples(List<ConsumptionHistory.Sample> samples) {
         this.samples = samples;
@@ -173,6 +179,7 @@ public class ConsumptionGraphView extends View {
         float top = inset;
         float bottom = h - inset;
         float usableHeight = bottom - top;
+        float zeroOffset = usableHeight * 0.25f;
         float plotLeft = labelGutter;
         float plotWidth = w - plotLeft;
         if (usableHeight <= 0 || plotWidth <= 0) {
@@ -183,6 +190,9 @@ public class ConsumptionGraphView extends View {
         // graph waiting for samples rather than as a blank panel.
         float ceiling = niceCeiling(samples == null || samples.isEmpty()
                 ? 0f : Math.max(getMax(), 0f));
+
+        // The negative energy (if it's lower than this, it's clipped to this value)
+        float regain = -ceiling * 0.25f;
 
         drawGrid(canvas, plotLeft, w, top, bottom, usableHeight, ceiling);
 
@@ -195,34 +205,46 @@ public class ConsumptionGraphView extends View {
 
         linePath.reset();
         fillPath.reset();
+        fillRegainPath.reset();
 
         float lastX = plotLeft;
         float lastY = bottom;
         for (int i = 0; i < n; i++) {
             float x = plotLeft + i * stepX;
-            float y = yFor(samples.get(i).value, ceiling, top, bottom, usableHeight);
+            float val = Math.max(samples.get(i).value, regain);
+            float y = yFor(val, ceiling, top, bottom, usableHeight * 0.75f, zeroOffset);
+            float yPos = (val >= 0) ? y : (bottom - zeroOffset);
+            float yNeg = (val < 0) ? y : (bottom - zeroOffset);
 
             if (i == 0) {
                 linePath.moveTo(x, y);
-                fillPath.moveTo(x, bottom);
-                fillPath.lineTo(x, y);
+                fillPath.moveTo(x, bottom - zeroOffset);
+                fillPath.lineTo(x, yPos);
+                fillRegainPath.moveTo(x, bottom - zeroOffset);
+                fillRegainPath.lineTo(x, yNeg);
             } else {
                 linePath.lineTo(x, y);
-                fillPath.lineTo(x, y);
+                fillPath.lineTo(x, yPos);
+                fillRegainPath.lineTo(x, yNeg);
             }
             lastX = x;
             lastY = y;
         }
 
-        fillPath.lineTo(lastX, bottom);
+        fillPath.lineTo(lastX, bottom - zeroOffset);
         fillPath.close();
+        fillRegainPath.lineTo(lastX, bottom - zeroOffset);
+        fillRegainPath.close();
+
 
         canvas.drawPath(fillPath, fillPaint);
+        canvas.drawPath(fillRegainPath, fillRegainPaint);
 
         if (!Float.isNaN(average)) {
             // Drawn as a Path, not drawLine: DashPathEffect is not reliably
             // honoured for drawLine on a hardware-accelerated canvas.
-            float avgY = yFor(average, ceiling, top, bottom, usableHeight);
+            float val = Math.max(average, regain);
+            float avgY = yFor(val, ceiling, top, bottom, usableHeight * 0.75f, zeroOffset);
             averagePath.reset();
             averagePath.moveTo(plotLeft, avgY);
             averagePath.lineTo(w, avgY);
@@ -235,33 +257,47 @@ public class ConsumptionGraphView extends View {
 
     private void drawGrid(Canvas canvas, float plotLeft, float right, float top, float bottom,
             float usableHeight, float ceiling) {
+
+        float labelX = plotLeft - 15f;
+        float zeroOffset = ceiling * 0.25f;
+
         // Baseline at zero, unlabelled: the axis starting at zero is the point.
         canvas.drawLine(plotLeft, bottom, right, bottom, gridPaint);
+        canvas.drawText(formatGridLabel(0, zeroOffset), labelX,
+                bottom /*- (gridLabelPaint.ascent() + gridLabelPaint.descent())*/,
+                gridLabelPaint);
 
-        float labelX = plotLeft - 4f;
+        int counter = 0;
         for (float fraction : GRID_FRACTIONS) {
             float value = ceiling * fraction;
             float y = bottom - fraction * usableHeight;
             canvas.drawLine(plotLeft, y, right, y, gridPaint);
-            canvas.drawText(formatGridLabel(value), labelX,
-                    y - (gridLabelPaint.ascent() + gridLabelPaint.descent()) / 2f,
-                    gridLabelPaint);
+            if (++counter == GRID_FRACTIONS.length) {
+                canvas.drawText(formatGridLabel(value, zeroOffset), labelX,
+                        y - (gridLabelPaint.ascent() + gridLabelPaint.descent()),
+                        gridLabelPaint);
+            } else {
+                canvas.drawText(formatGridLabel(value, zeroOffset), labelX,
+                        y - (gridLabelPaint.ascent() + gridLabelPaint.descent()) / 2f,
+                        gridLabelPaint);
+            }
         }
     }
 
-    private static String formatGridLabel(float value) {
+    private static String formatGridLabel(float val, float zeroOffset) {
         // Thirds of 10 or 15 are not whole numbers; everything else is.
+        float value = val - zeroOffset;
         return value == Math.rint(value)
                 ? String.valueOf(Math.round(value))
-                : String.format(java.util.Locale.US, "%.1f", value);
+                : String.format(java.util.Locale.US, "%.0f", value);
     }
 
     private static float yFor(float value, float ceiling, float top, float bottom,
-            float usableHeight) {
+            float usableHeight, float zeroOffset) {
         if (ceiling <= 0f) {
             return bottom;
         }
-        float y = bottom - (value / ceiling) * usableHeight;
+        float y = bottom - (value / ceiling) * usableHeight - zeroOffset;
         return Math.max(top, Math.min(bottom, y));
     }
 }

@@ -92,6 +92,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
+            android:theme="@style/AppTheme.MainActivity"
             android:windowSoftInputMode="adjustPan">
 
             <intent-filter>

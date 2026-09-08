@@ -50,27 +50,27 @@
 
                 <ImageView
                     android:id="@+id/hvacOpenButton"
-                    android:layout_width="32dp"
-                    android:layout_height="32dp"
-                    android:padding="4dp"
-                    android:src="@drawable/ic_open_page"
-                    android:scaleType="fitCenter"
-                    android:clickable="true"
-                    android:focusable="true"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
-                    android:contentDescription="Open the climate page" />
+                    android:clickable="true"
+                    android:contentDescription="Open the climate page"
+                    android:focusable="true"
+                    android:padding="4dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_open_page" />
 
                 <TextView
                     android:layout_width="0dp"
-                    android:layout_weight="1"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="center"
+                    android:letterSpacing="0.1"
+                    android:paddingHorizontal="4dp"
                     android:text="CLIMATE"
                     android:textColor="@color/text_secondary"
-                    android:textSize="10sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:letterSpacing="0.1"
-                    android:gravity="center"
-                    android:paddingHorizontal="4dp" />
+                    android:textSize="16sp" />
 
                 <!--
                     Typed as a plain Switch in XML but held as a CompoundButton in
@@ -80,7 +80,7 @@
                 <Switch
                     android:id="@+id/hvacPowerSwitch"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
+                    android:layout_height="48dp"
                     android:contentDescription="Climate on/off" />
 
             </LinearLayout>
@@ -96,8 +96,8 @@
                 <com.custom.launcher.widget.ArcSliderView
                     android:id="@+id/hvacTempDial"
                     android:layout_width="0dp"
-                    android:layout_weight="1"
                     android:layout_height="match_parent"
+                    android:layout_weight="1"
                     app:arcLabel="TEMP" />
 
                 <com.custom.launcher.widget.ArcSliderView
@@ -236,13 +236,30 @@
                 <TextView
                     android:id="@+id/batteryLabel"
                     android:layout_width="0dp"
-                    android:layout_weight="1"
                     android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.1"
                     android:text="BATTERY"
                     android:textColor="@color/text_secondary"
-                    android:textSize="10sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:letterSpacing="0.1" />
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:id="@+id/batteryRange"
+                    android:layout_width="wrap_content"
+                    android:layout_height="match_parent"
+                    android:layout_marginRight="10sp"
+                    android:layout_weight="1"
+                    android:gravity="right|center_vertical"
+                    android:shadowColor="@color/battery_green"
+                    android:shadowDx="0"
+                    android:shadowDy="0"
+                    android:shadowRadius="4"
+                    android:text="283 km"
+                    android:textAlignment="gravity"
+                    android:textColor="@color/colorAccent"
+                    android:textSize="24sp"
+                    android:textStyle="bold" />
 
                 <FrameLayout
                     android:layout_width="130dp"
@@ -252,7 +269,8 @@
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
                         android:layout_marginEnd="6dp"
-                        android:background="@drawable/battery_outline" />
+                        android:background="@drawable/battery_outline"
+                        android:textAlignment="center" />
 
                     <FrameLayout
                         android:id="@+id/batteryFillContainer"
@@ -276,6 +294,21 @@
                         android:layout_gravity="end|center_vertical"
                         android:background="@drawable/battery_cap" />
 
+                    <TextView
+                        android:id="@+id/batteryPercent"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="center_horizontal|center_vertical"
+                        android:shadowColor="@color/colorPrimaryDark"
+                        android:shadowDx="0"
+                        android:shadowDy="0"
+                        android:shadowRadius="10"
+                        android:text="84%"
+                        android:textAlignment="gravity"
+                        android:textColor="@color/text_primary"
+                        android:textSize="24sp"
+                        android:textStyle="bold" />
+
                 </FrameLayout>
 
             </LinearLayout>
@@ -294,10 +327,10 @@
                 android:id="@+id/graphCaption"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:fontFamily="sans-serif"
                 android:text="Collecting consumption data…"
                 android:textColor="@color/text_tertiary"
-                android:textSize="11sp"
-                android:fontFamily="sans-serif" />
+                android:textSize="16sp" />
 
             <!--
                 Everything numeric on one line. It used to be a 64sp SoC figure, a
@@ -309,12 +342,12 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="—"
-                android:textColor="@color/text_primary"
-                android:textSize="14sp"
                 android:fontFamily="sans-serif-medium"
+                android:lineSpacingExtra="2dp"
                 android:maxLines="2"
-                android:lineSpacingExtra="2dp" />
+                android:text="9.4kW - 18.2 kWh/100km"
+                android:textColor="@color/text_primary"
+                android:textSize="32sp" />
 
         </LinearLayout>
 
@@ -394,11 +427,11 @@
                     android:layout_height="wrap_content"
                     android:layout_gravity="top|start"
                     android:layout_margin="14dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.1"
                     android:text="NOW PLAYING"
                     android:textColor="@color/text_primary"
-                    android:textSize="12sp"
-                    android:letterSpacing="0.1"
-                    android:fontFamily="sans-serif-medium" />
+                    android:textSize="16sp" />
 
                 <!-- Gradient scrim at bottom for text readability -->
                 <View
@@ -611,11 +644,11 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
+                        android:fontFamily="sans-serif"
+                        android:singleLine="true"
                         android:text="GPS"
                         android:textColor="@color/text_secondary"
-                        android:textSize="12sp"
-                        android:fontFamily="sans-serif"
-                        android:singleLine="true" />
+                        android:textSize="16sp" />
 
                 </LinearLayout>
 
@@ -623,11 +656,11 @@
                     android:id="@+id/gpsNavLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:gravity="end"
                     android:text="Set a nav app"
                     android:textColor="@color/text_tertiary"
-                    android:textSize="12sp"
-                    android:fontFamily="sans-serif-medium"
-                    android:gravity="end" />
+                    android:textSize="16sp" />
 
             </LinearLayout>
 

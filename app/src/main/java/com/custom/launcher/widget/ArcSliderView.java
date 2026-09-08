@@ -210,7 +210,7 @@ public class ArcSliderView extends View {
 
         // Type scales with the dial so one layout works at any card size.
         valuePaint.setTextSize(diameter * 0.30f);
-        labelPaint.setTextSize(Math.max(9f, diameter * 0.10f));
+        labelPaint.setTextSize(Math.max(11f, diameter * 0.12f));
 
         Paint.FontMetrics fm = valuePaint.getFontMetrics();
         canvas.drawText(valueText, cx, cy - (fm.ascent + fm.descent) / 2f, valuePaint);

@@ -6,5 +6,5 @@
         380dp, which drew the energy tile straight through the music card.
         On the car's 1778dp-wide screen this leaves ~1050dp for the player.
     -->
-    <dimen name="left_column_width">330dp</dimen>
+    <dimen name="left_column_width">440dp</dimen>
 </resources>

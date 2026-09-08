@@ -65,7 +65,7 @@ public class ConsumptionHistory {
 
     /** Adds a sample and persists. Ignores NaN and negative values. */
     public synchronized void add(long timestamp, float value) {
-        if (Float.isNaN(value) || Float.isInfinite(value) || value < 0f) {
+        if (Float.isNaN(value) || Float.isInfinite(value)) {
             return;
         }
         samples.add(new Sample(timestamp, value));
