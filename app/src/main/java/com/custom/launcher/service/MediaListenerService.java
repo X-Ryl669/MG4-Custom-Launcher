@@ -13,8 +13,12 @@ import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
 import android.net.Uri;
+import android.os.SystemClock;
 import android.service.notification.NotificationListenerService;
 import android.util.Log;
+import com.custom.launcher.media.MediaArtLoader;
+import com.custom.launcher.radio.RadioClient;
+import com.custom.launcher.radio.RadioStationStore;
 import com.custom.launcher.util.LogUtils;
 
 /**
@@ -32,6 +36,17 @@ public class MediaListenerService extends NotificationListenerService {
 
     private MediaSessionManager mediaSessionManager;
     private MediaController activeController;
+
+    /** The station package whose sessions carry no art of their own. */
+    private static final String RADIO_PACKAGE = "com.saicmotor.radio";
+
+    /** Last decoded station logo, so a re-reported track is not a database read. */
+    private String cachedLogoKey;
+    private Bitmap cachedLogo;
+    private long lastLogoLookup;
+
+    /** Floor between station lookups when the track has not changed. */
+    private static final long LOGO_RECHECK_MS = 5000;
     private List<MediaController> sessions = java.util.Collections.emptyList();
 
     /**
@@ -394,6 +409,9 @@ public class MediaListenerService extends NotificationListenerService {
                         Log.i(TAG, "✓ Using embedded METADATA_KEY_ART");
                     }
                 }
+                if (albumArt == null) {
+                    albumArt = dabStationLogo(trackChanged);
+                }
 
                 boolean isPlaying = state != null &&
                         state.getState() == PlaybackState.STATE_PLAYING;
@@ -407,6 +425,54 @@ public class MediaListenerService extends NotificationListenerService {
         } catch (Exception e) {
             LogUtils.logError(TAG, "Failed to get media info", e);
         }
+    }
+
+    /**
+     * The tuned DAB station's logo, for when the radio session offers no art.
+     *
+     * <h3>Why the radio needs its own path</h3>
+     * The radio's media session publishes a station name and RDS text but no
+     * image, so the player tile sat blank on every broadcast station. The art does
+     * exist though — the tuner receives a logo per DAB service and the radio app
+     * stores it in its own database, which is also where it gets the logo it draws
+     * on its own screen. See {@code RadioStationStore}.
+     *
+     * <p>
+     * Only consulted after the metadata has been exhausted, and only for the radio
+     * package, so nothing else pays for it. The cached decode means a station that
+     * keeps re-reporting the same track does not re-read the database.
+     */
+    private Bitmap dabStationLogo(boolean trackChanged) {
+        if (activeController == null
+                || !RADIO_PACKAGE.equals(activeController.getPackageName())) {
+            return null;
+        }
+        // The radio republishes its metadata many times a second while RDS text
+        // scrolls - the log shows forty updates inside four seconds - and each one
+        // reaches here. Without this the station lookup would be forty database
+        // opens a second for an answer that changes when the station does.
+        long now = SystemClock.uptimeMillis();
+        if (!trackChanged && now - lastLogoLookup < LOGO_RECHECK_MS) {
+            return cachedLogo;
+        }
+        lastLogoLookup = now;
+
+        RadioClient.DabStation station = RadioStationStore.currentDabStation(this);
+        if (station == null) {
+            return null;
+        }
+        String key = RadioStationStore.logoKey(station);
+        if (key.equals(cachedLogoKey)) {
+            return cachedLogo;
+        }
+        byte[] encoded = RadioStationStore.dabLogo(this, station.serviceId, station.ensembleId);
+        cachedLogoKey = key;
+        cachedLogo = MediaArtLoader.decodeBytes(encoded, key);
+        if (trackChanged) {
+            Log.i(TAG, (cachedLogo != null ? "✓ Using the DAB station logo for "
+                    : "No stored logo for ") + station.displayName());
+        }
+        return cachedLogo;
     }
 
     @Override

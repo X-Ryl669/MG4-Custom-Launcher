@@ -16,6 +16,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.custom.launcher.util.LauncherPrefs;
+import com.custom.launcher.window.FloatingAppController;
 
 /**
  * Drives the GPS tile: latitude, longitude, fix age, and a tap that opens the
@@ -77,16 +78,30 @@ public class GpsTileController implements LocationListener {
         this.detailText = activity.findViewById(R.id.gpsDetail);
         this.navLabel = activity.findViewById(R.id.gpsNavLabel);
 
+        installClickHandlers();
+    }
+
+    /**
+     * Puts the tile's own click handlers back.
+     *
+     * <p>
+     * Public because the card is shared: while a map floats over the player this
+     * same card is the compact player, and tapping it has to put the map away
+     * instead of opening a navigation app. MainActivity takes the clicks over for
+     * that and calls this to hand them back.
+     */
+    public void installClickHandlers() {
         View card = activity.findViewById(R.id.gpsCard);
-        if (card != null) {
-            card.setOnClickListener(v -> openNavigation());
-            // Long-press is a shortcut to the picker, so changing the app does not
-            // mean a trip through the menu.
-            card.setOnLongClickListener(v -> {
-                activity.pickNavigationApp();
-                return true;
-            });
+        if (card == null) {
+            return;
         }
+        card.setOnClickListener(v -> openNavigation());
+        // Long-press is a shortcut to the picker, so changing the app does not
+        // mean a trip through the menu.
+        card.setOnLongClickListener(v -> {
+            activity.pickNavigationApp();
+            return true;
+        });
     }
 
     // --- lifecycle ---
@@ -275,6 +290,11 @@ public class GpsTileController implements LocationListener {
             return;
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        // A plain tap means "fullscreen, as it has always been". If the app has
+        // been floating, its task is still pinned to the media card's rectangle,
+        // and starting it without letting go of that gives a small map in the
+        // corner of a black screen. Harmless when it was never floated.
+        FloatingAppController.restoreFullscreen(activity, pkg);
         try {
             activity.startActivity(intent);
         } catch (Exception e) {

@@ -11,6 +11,7 @@ import android.content.ComponentName;
 import android.content.Intent;
 import android.media.session.MediaController;
 import android.media.session.PlaybackState;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -35,6 +36,7 @@ import com.custom.launcher.media.MediaSources;
 import com.custom.launcher.saic.SaicSourceSwitch;
 import com.custom.launcher.service.MediaListenerService;
 import com.custom.launcher.util.LauncherPrefs;
+import com.custom.launcher.window.FloatingAppController;
 import com.custom.launcher.util.LogTee;
 import com.custom.launcher.util.LogUtils;
 
@@ -47,6 +49,19 @@ public class MainActivity extends AppCompatActivity {
     private HvacTileController hvacTile;
     private EnergyTileController energyTile;
     private GpsTileController gpsTile;
+
+    // Floating map window ("PiP") state.
+    private View musicCard;
+    private View gpsFace;
+    private View miniPlayerFace;
+    private ImageView miniAlbumArt;
+    private TextView miniTitle;
+    private TextView miniArtist;
+    private ImageButton miniPlayPauseButton;
+    private boolean floatingMapActive;
+    private String floatingMapPackage;
+    /** Long enough for the launched activity to have a task to operate on. */
+    private static final long FLOAT_REPAIR_DELAY_MS = 1200L;
     private TextView mediaSourceLabel;
     private final BluetoothConnectionReceiver btArtCacheReceiver = new BluetoothConnectionReceiver();
     private TextView batteryLabel;
@@ -141,8 +156,12 @@ public class MainActivity extends AppCompatActivity {
         // Mirror our own log lines to Download/, because logcat's buffer on this
         // car turns over in well under a second: a log captured from the car
         // contained 201 lines, none of them ours. Without this there is no way to
-        // get a diagnostic off the vehicle.
-        LogTee.start();
+        // get a diagnostic off the vehicle - but it is also a file on the car's
+        // flash that grows the whole time the launcher runs, so it is off until
+        // asked for. Menu > Debug logging.
+        if (LauncherPrefs.isLoggingEnabled(this)) {
+            LogTee.start();
+        }
 
         setContentView(R.layout.activity_main);
 
@@ -199,6 +218,13 @@ public class MainActivity extends AppCompatActivity {
         applyHeatingAvailability();
         handlePickNavAppRequest(getIntent());
         btArtCacheReceiver.register(this);
+
+        // Returning to the launcher while a map is meant to be floating: re-apply
+        // it. This is what makes the home button an escape hatch if the window
+        // ever comes up fullscreen and hides the compact player.
+        if (floatingMapActive) {
+            retryHandler.postDelayed(this::refloatMap, FLOAT_REPAIR_DELAY_MS);
+        }
     }
 
     @Override
@@ -373,6 +399,22 @@ public class MainActivity extends AppCompatActivity {
         });
 
         mediaSourceLabel = findViewById(R.id.mediaSourceLabel);
+
+        musicCard = findViewById(R.id.musicCard);
+        gpsFace = findViewById(R.id.gpsFace);
+        miniPlayerFace = findViewById(R.id.miniPlayerFace);
+        miniAlbumArt = findViewById(R.id.miniAlbumArt);
+        miniTitle = findViewById(R.id.miniTitle);
+        miniArtist = findViewById(R.id.miniArtist);
+        miniPlayPauseButton = findViewById(R.id.miniPlayPauseButton);
+
+        findViewById(R.id.pipToggleButton).setOnClickListener(v -> startFloatingMap());
+        findViewById(R.id.miniPrevButton).setOnClickListener(
+                v -> sendMediaButtonCommand(KeyEvent.KEYCODE_MEDIA_PREVIOUS));
+        miniPlayPauseButton.setOnClickListener(
+                v -> sendMediaButtonCommand(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE));
+        findViewById(R.id.miniNextButton).setOnClickListener(
+                v -> sendMediaButtonCommand(KeyEvent.KEYCODE_MEDIA_NEXT));
 
         View browseButton = findViewById(R.id.browseButton);
         if (browseButton != null) {
@@ -835,6 +877,127 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
+    // --- floating map window ---
+
+    /**
+     * Puts the chosen navigation app in a floating window over the media player,
+     * and turns the GPS tile into the compact player.
+     *
+     * <p>
+     * The window is placed on the media card's own screen rectangle rather than a
+     * fixed size, so it lines up with the tile it replaces whatever the layout
+     * does. See {@link FloatingAppController} for why this is freeform windowing
+     * and not picture-in-picture - short version: this ROM ships no PiP feature
+     * and OsmAnd never asks for PiP anyway.
+     */
+    private void startFloatingMap() {
+        String pkg = LauncherPrefs.getNavPackage(this);
+        if (pkg == null) {
+            Toast.makeText(this, "Pick a navigation app first", Toast.LENGTH_SHORT).show();
+            pickNavigationApp();
+            return;
+        }
+        if (musicCard == null) {
+            return;
+        }
+
+        Rect bounds = screenRectOf(musicCard);
+        if (bounds.isEmpty()) {
+            // Called before layout; nothing sensible to place a window on yet.
+            Log.w(TAG, "Media card has no bounds yet; not floating the map");
+            return;
+        }
+
+        String failure = FloatingAppController.show(this, pkg, bounds);
+        if (failure != null) {
+            Log.w(TAG, "Floating map refused: " + failure);
+            Toast.makeText(this, failure, Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        floatingMapPackage = pkg;
+        setFloatingMapActive(true);
+
+        // The launch options are the clean route; this is the repair for a
+        // platform that ignores them and brings the app up fullscreen. It checks
+        // the task's real windowing mode first and leaves a correct window alone.
+        retryHandler.postDelayed(this::refloatMap, FLOAT_REPAIR_DELAY_MS);
+    }
+
+    /** Re-applies the window mode and bounds; harmless when already correct. */
+    private void refloatMap() {
+        if (!floatingMapActive || floatingMapPackage == null || musicCard == null) {
+            return;
+        }
+        Rect bounds = screenRectOf(musicCard);
+        if (!bounds.isEmpty()) {
+            FloatingAppController.forceFloat(this, floatingMapPackage, bounds);
+        }
+    }
+
+    /** Puts the map away and gives the full player and the GPS readout back. */
+    private void stopFloatingMap() {
+        if (floatingMapPackage != null) {
+            FloatingAppController.hide(this, floatingMapPackage);
+        }
+        floatingMapPackage = null;
+        setFloatingMapActive(false);
+    }
+
+    private void setFloatingMapActive(boolean active) {
+        floatingMapActive = active;
+
+        // The card underneath is deliberately left visible. Hiding it meant that
+        // any failure to draw the window - and on the first on-car run the window
+        // did vanish a second after appearing - left a black hole where the player
+        // had been. Leaving it up costs nothing when the window does cover it, and
+        // degrades to "the player is still there" when it does not.
+        if (gpsFace != null) {
+            gpsFace.setVisibility(active ? View.GONE : View.VISIBLE);
+        }
+        if (miniPlayerFace != null) {
+            miniPlayerFace.setVisibility(active ? View.VISIBLE : View.GONE);
+        }
+
+        View card = findViewById(R.id.gpsCard);
+        if (card != null) {
+            if (active) {
+                // Tapping anywhere that is not a transport button dismisses the
+                // map; the buttons keep their own clicks and still work.
+                card.setOnClickListener(v -> stopFloatingMap());
+                card.setOnLongClickListener(null);
+            } else if (gpsTile != null) {
+                gpsTile.installClickHandlers();
+            }
+        }
+
+        if (active) {
+            updateMiniPlayer();
+        }
+        Log.i(TAG, "Floating map " + (active ? "shown" : "hidden"));
+    }
+
+    private static Rect screenRectOf(View view) {
+        int[] location = new int[2];
+        view.getLocationOnScreen(location);
+        return new Rect(location[0], location[1],
+                location[0] + view.getWidth(), location[1] + view.getHeight());
+    }
+
+    /** Mirrors the big player's current track onto the compact one. */
+    private void updateMiniPlayer() {
+        if (miniTitle == null) {
+            return;
+        }
+        miniTitle.setText(songTitle != null && songTitle.getText().length() > 0
+                ? songTitle.getText() : "Nothing playing");
+        miniArtist.setText(artistName != null ? artistName.getText() : "");
+        miniArtist.setVisibility(miniArtist.getText().length() == 0 ? View.GONE : View.VISIBLE);
+        miniPlayPauseButton.setImageResource(
+                isMediaPlaying ? R.drawable.ic_pause : R.drawable.ic_play);
+    }
+
     private void setupMediaService() {
         MediaListenerService.setListener((title, artist, isPlaying, albumArtBitmap) -> {
             runOnUiThread(() -> {
@@ -864,6 +1027,15 @@ public class MainActivity extends AppCompatActivity {
                     albumArtBlurred.setColorFilter(null);
                     albumArt.setImageDrawable(null);
                     albumArt.setColorFilter(null);
+                }
+
+                if (miniAlbumArt != null) {
+                    // Same bitmap, no blur or desaturation: at 64dp those effects
+                    // only muddy it.
+                    miniAlbumArt.setImageBitmap(albumArtBitmap);
+                }
+                if (floatingMapActive) {
+                    updateMiniPlayer();
                 }
             });
         });
@@ -1070,6 +1242,10 @@ public class MainActivity extends AppCompatActivity {
     private void updatePlayPauseButton() {
         // Update play/pause icon based on state
         playPauseButton.setImageResource(isMediaPlaying ? R.drawable.ic_pause : R.drawable.ic_play);
+        if (miniPlayPauseButton != null) {
+            miniPlayPauseButton.setImageResource(
+                    isMediaPlaying ? R.drawable.ic_pause : R.drawable.ic_play);
+        }
     }
 
     private void updateMediaProgress() {

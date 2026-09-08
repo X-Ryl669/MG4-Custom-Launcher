@@ -39,7 +39,7 @@ public class EnergyTileController implements CarPropertyClient.Listener {
     /** Poll cadence while the launcher is in the foreground. */
     private static final long POLL_INTERVAL_MS = 2000L;
     /** How often a consumption sample is appended to the graph history. */
-    private static final long SAMPLE_INTERVAL_MS = 1000; //30_000L;
+    private static final long SAMPLE_INTERVAL_MS = 30_000L;
 
     /**
      * Confirmed on-car: the property is already kWh/100km. While driving the tile
@@ -290,7 +290,7 @@ public class EnergyTileController implements CarPropertyClient.Listener {
         }
 
         float scaled = raw * CONSUMPTION_SCALE;
-        if (scaled < 0f || scaled > MAX_PLAUSIBLE_KWH_PER_100KM) {
+        if (scaled > MAX_PLAUSIBLE_KWH_PER_100KM) {
             Log.w(TAG, "Implausible consumption " + scaled + " kWh/100km from raw " + raw);
             return Float.NaN;
         }

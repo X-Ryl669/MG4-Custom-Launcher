@@ -64,6 +64,7 @@ public class RadioClient {
 
     private static final String IRADIO_MANAGER = "com.android.car.radio.service.IRadioManager";
     private static final String IRADIO_CALLBACK = "com.android.car.radio.service.IRadioCallback";
+    private static final String IDAB_CALLBACK = "com.android.car.radio.service.IDabCallback";
 
     // IRadioManager transactions.
     private static final int TXN_TUNE = 1;
@@ -81,6 +82,12 @@ public class RadioClient {
     private static final int TXN_ON_MEDIA_SESSION_PLAY = 30;
     private static final int TXN_ON_MEDIA_SESSION_SKIP_TO_NEXT = 32;
     private static final int TXN_ON_MEDIA_SESSION_SKIP_TO_PREVIOUS = 33;
+    private static final int TXN_ADD_DAB_TUNER_CALLBACK = 37;
+    private static final int TXN_REMOVE_DAB_TUNER_CALLBACK = 38;
+    private static final int TXN_DAB_SWITCH_SOURCE = 40;
+    private static final int TXN_DAB_TUNE = 41;
+    private static final int TXN_DAB_SCAN = 43;
+    private static final int TXN_QUERY_DAB_STATION_LIST = 46;
     private static final int TXN_RESUME_RADIO_PLAYING = 47;
 
     // IRadioCallback transactions we care about; the rest are acknowledged and dropped.
@@ -91,8 +98,24 @@ public class RadioClient {
     private static final int CB_ON_SCAN_FINISHED = 5;
     private static final int CB_ON_RADIO_MUTE_CHANGED = 8;
 
+    // IDabCallback transactions. A separate interface with its own callback binder:
+    // registering only IRadioCallback is why a DAB head unit told us nothing.
+    private static final int DAB_CB_MUTE_CHANGED = 1;
+    private static final int DAB_CB_STATION_LIST_CHANGED = 2;
+    private static final int DAB_CB_MAIN_INFO_CHANGED = 3;
+    private static final int DAB_CB_DLS_CHANGED = 4;
+    private static final int DAB_CB_SLIDESHOW_CHANGED = 5;
+
     public static final int BAND_AM = 0;
     public static final int BAND_FM = 1;
+    /**
+     * DAB. Read off the car, which reported {@code band 4 ch -1} — and confirmed
+     * in the stock app, whose {@code CarRadioDabPresenter} initialises
+     * {@code mCurrentRadioBand = 4}. This matters more than it looks: on DAB the
+     * whole FM/AM control surface is inert, which is why {@code scan()} was
+     * accepted and then silently ignored.
+     */
+    public static final int BAND_DAB = 4;
 
     /** One tuned station, flattened out of {@code RadioStation} + {@code RadioRds}. */
     public static class Station {
@@ -140,6 +163,63 @@ public class RadioClient {
         }
     }
 
+    /**
+     * One DAB service, mirroring {@code RadioDabStation}'s parcel layout exactly:
+     * pty, serviceName, serviceId (long), ensembleName, ensembleId,
+     * frequencyIndex, type, frequencyChannel.
+     */
+    public static class DabStation {
+        public final int pty;
+        public final String serviceName;
+        public final long serviceId;
+        public final String ensembleName;
+        public final int ensembleId;
+        public final int frequencyIndex;
+        /** 0 = an ensemble heading in the stock list, 1 = a tunable service. */
+        public final int type;
+        public final int frequencyChannel;
+
+        DabStation(int pty, String serviceName, long serviceId, String ensembleName,
+                int ensembleId, int frequencyIndex, int type, int frequencyChannel) {
+            this.pty = pty;
+            this.serviceName = serviceName;
+            this.serviceId = serviceId;
+            this.ensembleName = ensembleName;
+            this.ensembleId = ensembleId;
+            this.frequencyIndex = frequencyIndex;
+            this.type = type;
+            this.frequencyChannel = frequencyChannel;
+        }
+
+        public boolean isHeading() {
+            return type == TYPE_DAB_TITLE;
+        }
+
+        public String displayName() {
+            if (serviceName != null && !serviceName.trim().isEmpty()) {
+                return serviceName.trim();
+            }
+            return "Service " + serviceId;
+        }
+
+        public String subtitle() {
+            String ensemble = ensembleName == null ? "" : ensembleName.trim();
+            if (ensemble.isEmpty()) {
+                return "DAB channel " + frequencyChannel;
+            }
+            return ensemble + "  \u00b7  DAB channel " + frequencyChannel;
+        }
+
+        @Override
+        public String toString() {
+            return "DabStation{" + displayName() + ", ensemble='" + ensembleName
+                    + "', sid=" + serviceId + ", type=" + type + "}";
+        }
+    }
+
+    public static final int TYPE_DAB_TITLE = 0;
+    public static final int TYPE_DAB_DATA = 1;
+
     public interface Listener {
         void onRadioReady();
 
@@ -151,6 +231,12 @@ public class RadioClient {
         void onScanFinished(int band, List<Station> stations);
 
         void onScanStarted(int band);
+
+        /**
+         * The DAB service list, which arrives after {@link #queryDabStationList()}
+         * without any band sweep at all.
+         */
+        void onDabStationList(List<DabStation> stations);
     }
 
     private final Context context;
@@ -160,6 +246,7 @@ public class RadioClient {
     private IBinder radioManager;
     private boolean bindRequested;
     private boolean callbackRegistered;
+    private boolean dabCallbackRegistered;
 
     /**
      * The callback binder handed to the radio. Subclassing {@link Binder} and
@@ -233,6 +320,58 @@ public class RadioClient {
         }
     };
 
+
+    /**
+     * The DAB callback binder. A second, entirely separate interface from
+     * {@code IRadioCallback} — and the reason the first station-list attempt came
+     * back with nothing: we had registered only the radio callback, so the one
+     * transaction that carries a DAB service list had nowhere to land.
+     */
+    private final Binder dabCallback = new Binder() {
+        @Override
+        protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) {
+            switch (code) {
+                case DAB_CB_STATION_LIST_CHANGED: {
+                    data.enforceInterface(IDAB_CALLBACK);
+                    List<DabStation> stations = readDabStationList(data);
+                    if (reply != null) {
+                        reply.writeNoException();
+                    }
+                    Log.i(TAG, "DAB station list: " + stations.size() + " entr(ies)");
+                    post(() -> listener.onDabStationList(stations));
+                    return true;
+                }
+                case DAB_CB_MAIN_INFO_CHANGED: {
+                    data.enforceInterface(IDAB_CALLBACK);
+                    DabStation station = readNullableDabStation(data);
+                    if (reply != null) {
+                        reply.writeNoException();
+                    }
+                    Log.i(TAG, "DAB now playing: " + station);
+                    return true;
+                }
+                case DAB_CB_MUTE_CHANGED: {
+                    data.enforceInterface(IDAB_CALLBACK);
+                    int muted = data.readInt();
+                    if (reply != null) {
+                        reply.writeNoException();
+                    }
+                    Log.i(TAG, "DAB mute changed to " + muted);
+                    return true;
+                }
+                case DAB_CB_DLS_CHANGED:
+                case DAB_CB_SLIDESHOW_CHANGED:
+                default:
+                    // Radio text and slideshow images; acknowledged so the radio is
+                    // not left blocking on a reply, payload deliberately unread.
+                    if (reply != null) {
+                        reply.writeNoException();
+                    }
+                    return true;
+            }
+        }
+    };
+
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
@@ -248,6 +387,7 @@ public class RadioClient {
             Log.w(TAG, "RadioService disconnected");
             radioManager = null;
             callbackRegistered = false;
+            dabCallbackRegistered = false;
             listener.onRadioLost();
         }
     };
@@ -256,6 +396,7 @@ public class RadioClient {
         this.context = context.getApplicationContext();
         this.listener = listener;
         callback.attachInterface(null, IRADIO_CALLBACK);
+        dabCallback.attachInterface(null, IDAB_CALLBACK);
     }
 
     public boolean isReady() {
@@ -284,6 +425,10 @@ public class RadioClient {
             callVoid(TXN_REMOVE_RADIO_TUNER_CALLBACK, callback);
             callbackRegistered = false;
         }
+        if (dabCallbackRegistered) {
+            callVoid(TXN_REMOVE_DAB_TUNER_CALLBACK, dabCallback);
+            dabCallbackRegistered = false;
+        }
         try {
             context.unbindService(connection);
         } catch (Exception e) {
@@ -298,7 +443,41 @@ public class RadioClient {
             return;
         }
         callbackRegistered = callVoid(TXN_ADD_RADIO_TUNER_CALLBACK, callback);
-        Log.i(TAG, "addRadioTunerCallback succeeded=" + callbackRegistered);
+        // The stock app registers both on connect, before it touches the tuner.
+        dabCallbackRegistered = callVoid(TXN_ADD_DAB_TUNER_CALLBACK, dabCallback);
+        Log.i(TAG, "addRadioTunerCallback succeeded=" + callbackRegistered
+                + ", addDabTunerCallback succeeded=" + dabCallbackRegistered);
+    }
+
+    /**
+     * Re-attempts callback registration. No-op once registered, and worth calling
+     * before anything whose answer only arrives through the callback: if this
+     * returns false there is no point starting a scan at all, because the result
+     * has nowhere to be delivered.
+     */
+    public boolean ensureCallback() {
+        registerCallback();
+        return callbackRegistered;
+    }
+
+    /**
+     * The radio's state in a form a person can read off the screen.
+     *
+     * <p>
+     * There is no adb on this head unit and its logcat buffer turns over in under
+     * a second, so when something radio-shaped does not work, this string is the
+     * diagnostic channel.
+     */
+    public String diagnostics() {
+        if (!isReady()) {
+            return "radio service not bound";
+        }
+        Station current = getCurrentStation();
+        return "callback=" + callbackRegistered + "  dabCallback=" + dabCallbackRegistered
+                + "  initialised=" + isInitialised()
+                + "  focus=" + hasFocus()
+                + "  muted=" + isMuted()
+                + "\ntuned: " + (current == null ? "nothing" : current.toString());
     }
 
     // --- commands ---
@@ -423,6 +602,127 @@ public class RadioClient {
         } catch (Exception e) {
             Log.w(TAG, "getCurrentRadioStation() failed: " + e);
             return null;
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
+    }
+
+
+    // --- DAB ---
+
+    /**
+     * Asks for the DAB service list. No sweep, no retune, near-instant — the list
+     * the radio already holds.
+     *
+     * <p>
+     * This is the station list I previously reported did not exist. It does; it is
+     * just on the DAB half of the interface, which the earlier work never looked
+     * at because it assumed FM. {@code RadioService} forwards this straight to
+     * {@code DabTuner.queryDabStationList()} and the answer comes back on
+     * {@link Listener#onDabStationList}.
+     */
+    public boolean queryDabStationList() {
+        boolean sent = callVoid(TXN_QUERY_DAB_STATION_LIST);
+        Log.i(TAG, "queryDabStationList sent=" + sent
+                + ", dab callback registered=" + dabCallbackRegistered);
+        return sent;
+    }
+
+    /** A real DAB sweep, for when the held list is empty. Retunes while it runs. */
+    public boolean dabScan(int mode) {
+        return callIntArg(TXN_DAB_SCAN, mode);
+    }
+
+    /** Makes DAB the tuner's source. The stock app does this before every dabTune. */
+    public boolean dabSwitchSource(int source) {
+        return callIntArg(TXN_DAB_SWITCH_SOURCE, source);
+    }
+
+    public void dabTune(DabStation station) {
+        IBinder binder = radioManager;
+        if (binder == null || station == null) {
+            return;
+        }
+        // DabRadioStationManager.dabTune() switches source first; without it the
+        // tune lands on a tuner that is not listening.
+        dabSwitchSource(BAND_DAB);
+
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken(IRADIO_MANAGER);
+            data.writeInt(1);
+            writeDabStation(data, station);
+            binder.transact(TXN_DAB_TUNE, data, reply, 0);
+            reply.readException();
+            Log.i(TAG, "dabTune " + station);
+        } catch (Exception e) {
+            Log.w(TAG, "dabTune(" + station + ") failed: " + e);
+        } finally {
+            reply.recycle();
+            data.recycle();
+        }
+    }
+
+    /** The band the radio is on right now, or -1 when it will not say. */
+    public int currentBand() {
+        Station station = getCurrentStation();
+        return station != null ? station.band : -1;
+    }
+
+    private static void writeDabStation(Parcel out, DabStation station) {
+        out.writeInt(station.pty);
+        out.writeString(station.serviceName);
+        out.writeLong(station.serviceId);
+        out.writeString(station.ensembleName);
+        out.writeInt(station.ensembleId);
+        out.writeInt(station.frequencyIndex);
+        out.writeInt(station.type);
+        out.writeInt(station.frequencyChannel);
+    }
+
+    private static DabStation readDabStation(Parcel in) {
+        return new DabStation(in.readInt(), in.readString(), in.readLong(), in.readString(),
+                in.readInt(), in.readInt(), in.readInt(), in.readInt());
+    }
+
+    private static DabStation readNullableDabStation(Parcel in) {
+        return in.readInt() == 0 ? null : readDabStation(in);
+    }
+
+    private static List<DabStation> readDabStationList(Parcel in) {
+        int count = in.readInt();
+        if (count <= 0) {
+            return Collections.emptyList();
+        }
+        List<DabStation> stations = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            // Each element of a List<Parcelable> is written with its presence flag.
+            DabStation station = readNullableDabStation(in);
+            if (station != null) {
+                stations.add(station);
+            }
+        }
+        return stations;
+    }
+
+    private boolean callIntArg(int transaction, int arg) {
+        IBinder binder = radioManager;
+        if (binder == null) {
+            return false;
+        }
+        Parcel data = Parcel.obtain();
+        Parcel reply = Parcel.obtain();
+        try {
+            data.writeInterfaceToken(IRADIO_MANAGER);
+            data.writeInt(arg);
+            binder.transact(transaction, data, reply, 0);
+            reply.readException();
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "transaction " + transaction + "(" + arg + ") failed: " + e);
+            return false;
         } finally {
             reply.recycle();
             data.recycle();

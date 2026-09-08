@@ -35,37 +35,99 @@
             android:textSize="20sp"
             android:fontFamily="sans-serif-medium"
             android:maxLines="1"
-            android:ellipsize="end"
+            android:ellipsize="start"
             android:layout_marginStart="8dp" />
+
+        <!--
+            Sorting is a toggle, not a default: a phone's "All tracks" folder
+            arrives in no order at all and is unusable without it, while an album
+            arrives in track order that sorting would destroy.
+        -->
+        <TextView
+            android:id="@+id/browseSortButton"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:minWidth="120dp"
+            android:gravity="center"
+            android:paddingHorizontal="16dp"
+            android:background="@drawable/index_button_background"
+            android:text="Sort A-Z"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:layout_marginStart="12dp" />
+
+        <!--
+            Re-asks the phone for the current folder. Needed because a listing can
+            come back short: the platform gives the phone five seconds per page of
+            twenty and, if one page is late, keeps the partial list and stops
+            without saying so. Re-entering a folder is what makes it fetch again,
+            so this is the retry.
+        -->
+        <TextView
+            android:id="@+id/browseReloadButton"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:minWidth="100dp"
+            android:gravity="center"
+            android:paddingHorizontal="16dp"
+            android:background="@drawable/index_button_background"
+            android:text="Reload"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:layout_marginStart="12dp" />
 
     </LinearLayout>
 
-    <FrameLayout
+    <!--
+        The list and, down the right edge, the A-Z jump index. The screen is very
+        wide and a phone's music library is very long, so the empty right-hand
+        third earns its keep as 27 big targets instead of forcing a flick-scroll
+        through hundreds of rows.
+    -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:orientation="horizontal">
 
-        <ListView
-            android:id="@+id/browseList"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:divider="@color/separator"
-            android:dividerHeight="1dp"
-            android:scrollbars="vertical"
-            android:clipToPadding="false"
-            android:paddingBottom="12dp" />
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="match_parent">
 
-        <TextView
-            android:id="@+id/browseEmpty"
+            <ListView
+                android:id="@+id/browseList"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:divider="@color/separator"
+                android:dividerHeight="1dp"
+                android:scrollbars="vertical"
+                android:clipToPadding="false"
+                android:paddingBottom="12dp" />
+
+            <TextView
+                android:id="@+id/browseEmpty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="Nothing here"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp"
+                android:fontFamily="sans-serif"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
+        <!-- Columns and keys are built in MediaBrowseActivity; 27 of them in XML
+             would be 27 places to get one attribute wrong. -->
+        <LinearLayout
+            android:id="@+id/browseIndex"
             android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:text="Nothing here"
-            android:textColor="@color/text_secondary"
-            android:textSize="15sp"
-            android:fontFamily="sans-serif"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:layout_marginStart="12dp"
             android:visibility="gone" />
 
-    </FrameLayout>
+    </LinearLayout>
 
 </LinearLayout>

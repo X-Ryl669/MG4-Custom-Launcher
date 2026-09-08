@@ -20,6 +20,8 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.custom.launcher.location.LocationRelayService;
 import com.custom.launcher.location.LocationTools;
 import com.custom.launcher.media.BluetoothArtCache;
+import com.custom.launcher.media.MediaArtLoader;
+import com.custom.launcher.window.FloatingAppController;
 import com.custom.launcher.util.LauncherPrefs;
 import com.custom.launcher.util.LogTee;
 
@@ -88,13 +90,24 @@ public class LauncherSettingsActivity extends AppCompatActivity {
                 "Live energy properties, for calibration",
                 () -> startActivity(new Intent(this, BmsDebugActivity.class))));
 
+        entries.add(new Entry(
+                LauncherPrefs.isLoggingEnabled(this)
+                        ? "Stop capturing the debug log"
+                        : "Capture the debug log to a file",
+                loggingSubtitle(),
+                this::toggleLogging));
+
         entries.add(new Entry("Debug log",
-                "App log, saved to Download/" + LogTee.logFile().getName(),
+                "Read it on screen, or save a copy to Download/",
                 () -> startActivity(new Intent(this, LogViewerActivity.class))));
 
         entries.add(new Entry("Navigation app",
                 navAppSubtitle(),
                 this::pickNavApp));
+
+        entries.add(new Entry("Floating map window",
+                floatingWindowSubtitle(),
+                this::showFloatingWindowState));
 
         entries.add(new Entry(
                 LauncherPrefs.isHeatingHidden(this)
@@ -112,7 +125,78 @@ public class LauncherSettingsActivity extends AppCompatActivity {
                 this::openVehicleSettings));
     }
 
+    /** State of the capture, and what it is costing on flash. */
+    private String loggingSubtitle() {
+        long captured = LogTee.capturedBytes();
+        String held = captured > 0
+                ? readableSize(captured) + " held in Download/" + LogTee.logFile().getName()
+                : "nothing captured yet";
+        if (LauncherPrefs.isLoggingEnabled(this)) {
+            return LogTee.isRunning()
+                    ? "On \u00b7 " + held + ", 2 MB cap"
+                    : "On, but the capture is not running \u00b7 " + held;
+        }
+        return "Off, so nothing is written to the car's flash \u00b7 " + held;
+    }
+
+    private static String readableSize(long bytes) {
+        if (bytes >= 1024 * 1024) {
+            return String.format(java.util.Locale.US, "%.1f MB", bytes / (1024f * 1024f));
+        }
+        return Math.max(1, bytes / 1024) + " KB";
+    }
+
     // --- actions ---
+
+    /**
+     * Turns log capture on or off, taking effect at once.
+     *
+     * <p>
+     * Turning it off is also the moment someone is most likely to want the
+     * captured file gone, since that is the cost they are declining — so the offer
+     * is made there rather than hidden behind another menu entry. The toggle itself
+     * has already happened by then; declining only keeps the file.
+     */
+    private void toggleLogging() {
+        boolean enabled = !LauncherPrefs.isLoggingEnabled(this);
+        LauncherPrefs.setLoggingEnabled(this, enabled);
+
+        if (enabled) {
+            LogTee.start();
+            Log.i(TAG, "Debug log capture enabled");
+            Toast.makeText(this,
+                    "Capturing to Download/" + LogTee.logFile().getName(),
+                    Toast.LENGTH_LONG).show();
+            refreshEntries();
+            return;
+        }
+
+        LogTee.stop();
+        Log.i(TAG, "Debug log capture disabled");
+        long captured = LogTee.capturedBytes();
+        if (captured <= 0) {
+            Toast.makeText(this, "Log capture off", Toast.LENGTH_SHORT).show();
+            refreshEntries();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Log capture off")
+                .setMessage("There is still " + readableSize(captured)
+                        + " of captured log on the car's flash.\n\nDelete it?")
+                .setNegativeButton("Keep", (d, which) -> refreshEntries())
+                .setPositiveButton("Delete", (d, which) -> {
+                    long freed = LogTee.deleteCaptured();
+                    Toast.makeText(this, "Freed " + readableSize(freed), Toast.LENGTH_LONG).show();
+                    refreshEntries();
+                })
+                .show();
+    }
+
+    /** Relabels the menu, since several entries read their own current state. */
+    private void refreshEntries() {
+        buildEntries();
+        adapter.notifyDataSetChanged();
+    }
 
     private void showLocation() {
         String report = LocationTools.describe(this);
@@ -178,8 +262,55 @@ public class LauncherSettingsActivity extends AppCompatActivity {
                 wasRunning ? "Relay stopped" : "Relay started - check Debug log for fixes",
                 Toast.LENGTH_LONG).show();
         // The row's own label is its state readout.
-        buildEntries();
-        adapter.notifyDataSetChanged();
+        refreshEntries();
+    }
+
+
+    /**
+     * State of the floating-window feature, in one line.
+     *
+     * <p>
+     * This needs to be visible because the feature has a precondition no app can
+     * satisfy on its own: freeform windowing is sampled by the platform once at
+     * boot, so switching it on here does nothing until the head unit restarts.
+     * Without saying so, the button would just look broken.
+     */
+    private String floatingWindowSubtitle() {
+        return FloatingAppController.isAvailable(this)
+                ? "Working - the map can float over the player"
+                : "Not enabled yet; tap for the details and a switch";
+    }
+
+    private void showFloatingWindowState() {
+        String diagnostics = FloatingAppController.diagnostics(this);
+        Log.i(TAG, "Floating window state:\n" + diagnostics);
+
+        boolean enabled = FloatingAppController.isFreeformEnabled(this);
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle("Floating map window")
+                .setMessage(
+                        (enabled
+                                ? "Freeform windows are on. If a map still will not "
+                                        + "float, the head unit may not have been "
+                                        + "restarted since this was switched on.\n\n"
+                                : "This ROM ships no picture-in-picture and no freeform "
+                                        + "feature flag, so the window has to be enabled "
+                                        + "through a system setting. It is read only at "
+                                        + "startup, so the head unit must be restarted "
+                                        + "afterwards.\n\n")
+                                + diagnostics)
+                .setNegativeButton("Close", null);
+
+        if (!enabled) {
+            builder.setPositiveButton("Enable, then reboot", (dialog, which) -> {
+                boolean written = FloatingAppController.enableFreeform(this);
+                Toast.makeText(this, written
+                        ? "Enabled. Restart the head unit for it to take effect."
+                        : "Could not write the setting", Toast.LENGTH_LONG).show();
+                refreshEntries();
+            });
+        }
+        builder.show();
     }
 
     private String navAppSubtitle() {
@@ -225,12 +356,12 @@ public class LauncherSettingsActivity extends AppCompatActivity {
         Toast.makeText(this,
                 nowHidden ? "Heating controls hidden" : "Heating controls shown where fitted",
                 Toast.LENGTH_LONG).show();
-        buildEntries();
-        adapter.notifyDataSetChanged();
+        refreshEntries();
     }
 
     private void clearArtCache() {
         int removed = BluetoothArtCache.clear(null);
+        MediaArtLoader.clearCache();
         Toast.makeText(this, "Removed " + removed + " cached cover file(s)",
                 Toast.LENGTH_LONG).show();
     }

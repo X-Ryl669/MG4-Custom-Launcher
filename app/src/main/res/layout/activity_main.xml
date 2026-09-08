@@ -248,7 +248,7 @@
                     android:id="@+id/batteryRange"
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"
-                    android:layout_marginRight="10sp"
+                    android:layout_marginRight="20sp"
                     android:layout_weight="1"
                     android:gravity="right|center_vertical"
                     android:shadowColor="@color/battery_green"
@@ -258,7 +258,7 @@
                     android:text="283 km"
                     android:textAlignment="gravity"
                     android:textColor="@color/colorAccent"
-                    android:textSize="24sp"
+                    android:textSize="28sp"
                     android:textStyle="bold" />
 
                 <FrameLayout
@@ -306,7 +306,7 @@
                         android:text="84%"
                         android:textAlignment="gravity"
                         android:textColor="@color/text_primary"
-                        android:textSize="24sp"
+                        android:textSize="26sp"
                         android:textStyle="bold" />
 
                 </FrameLayout>
@@ -345,9 +345,9 @@
                 android:fontFamily="sans-serif-medium"
                 android:lineSpacingExtra="2dp"
                 android:maxLines="2"
-                android:text="9.4kW - 18.2 kWh/100km"
+                android:text="-19.4kW - 18.2 Wh/100m"
                 android:textColor="@color/text_primary"
-                android:textSize="32sp" />
+                android:textSize="30sp" />
 
         </LinearLayout>
 
@@ -599,7 +599,7 @@
         <androidx.cardview.widget.CardView
             android:id="@+id/gpsCard"
             android:layout_width="match_parent"
-            android:layout_height="86dp"
+            android:layout_height="96dp"
             android:layout_weight="0"
             android:clickable="true"
             android:focusable="true"
@@ -608,7 +608,17 @@
             app:cardCornerRadius="16dp"
             app:cardElevation="0dp">
 
+            <!--
+                Two faces in one card. While a map is floating over the player, the
+                player's own tile is behind that window and unusable, so this card
+                becomes the transport controls and the GPS readout steps aside.
+            -->
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent">
+
             <LinearLayout
+                android:id="@+id/gpsFace"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:orientation="horizontal"
@@ -662,7 +672,109 @@
                     android:textColor="@color/text_tertiary"
                     android:textSize="16sp" />
 
+                <ImageButton
+                    android:id="@+id/pipToggleButton"
+                    android:layout_width="52dp"
+                    android:layout_height="52dp"
+                    android:layout_marginStart="10dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_pip"
+                    android:tint="@color/text_secondary"
+                    android:scaleType="fitCenter"
+                    android:padding="12dp"
+                    android:contentDescription="Float the map over the player" />
+
             </LinearLayout>
+
+            <!--
+                The compact player. Tapping the card anywhere but a transport
+                button puts the map away and gives the full player back; the
+                buttons keep their own clicks, so they still work here.
+            -->
+            <LinearLayout
+                android:id="@+id/miniPlayerFace"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="14dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:id="@+id/miniAlbumArt"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:background="@drawable/mini_art_background"
+                    android:scaleType="centerCrop"
+                    android:layout_marginEnd="14dp"
+                    android:contentDescription="@null" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/miniTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif-medium"
+                        android:singleLine="true"
+                        android:ellipsize="end"
+                        android:text="Nothing playing"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:id="@+id/miniArtist"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:fontFamily="sans-serif"
+                        android:singleLine="true"
+                        android:ellipsize="end"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="15sp" />
+
+                </LinearLayout>
+
+                <ImageButton
+                    android:id="@+id/miniPrevButton"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_previous"
+                    android:tint="@color/text_primary"
+                    android:scaleType="fitCenter"
+                    android:padding="12dp"
+                    android:contentDescription="Previous track" />
+
+                <ImageButton
+                    android:id="@+id/miniPlayPauseButton"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_play"
+                    android:tint="@color/text_primary"
+                    android:scaleType="fitCenter"
+                    android:padding="10dp"
+                    android:contentDescription="Play or pause" />
+
+                <ImageButton
+                    android:id="@+id/miniNextButton"
+                    android:layout_width="56dp"
+                    android:layout_height="56dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_next"
+                    android:tint="@color/text_primary"
+                    android:scaleType="fitCenter"
+                    android:padding="12dp"
+                    android:contentDescription="Next track" />
+
+            </LinearLayout>
+
+            </FrameLayout>
 
         </androidx.cardview.widget.CardView>
 

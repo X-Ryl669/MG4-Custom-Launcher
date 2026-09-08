@@ -68,12 +68,68 @@ public final class LogTee {
     }
 
     public static synchronized void stop() {
+        if (!running) {
+            return;
+        }
         running = false;
+        // Destroying the process is what actually unblocks the pump: it is parked
+        // in readLine() and will not notice the flag on its own.
         if (process != null) {
             process.destroy();
             process = null;
         }
+        Thread pumping = thread;
         thread = null;
+        if (pumping != null) {
+            try {
+                // Briefly, so the writer is closed before anyone deletes the file
+                // or starts a second tee appending to it.
+                pumping.join(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        Log.i(TAG, "Stopped teeing app logs");
+    }
+
+    public static synchronized boolean isRunning() {
+        return running;
+    }
+
+    /** Bytes currently on flash across the log and its one rotated generation. */
+    public static long capturedBytes() {
+        long total = 0;
+        File current = logFile();
+        if (current.isFile()) {
+            total += current.length();
+        }
+        File previous = new File(LOG_DIR, PREV_NAME);
+        if (previous.isFile()) {
+            total += previous.length();
+        }
+        return total;
+    }
+
+    /**
+     * Deletes what has been captured so far, returning the bytes freed.
+     *
+     * <p>
+     * Stops the tee first if it is running. Deleting underneath a live tee would
+     * leave its writer appending to an unlinked file, so the log would look like it
+     * was working while going nowhere.
+     */
+    public static synchronized long deleteCaptured() {
+        stop();
+        long freed = capturedBytes();
+        File[] files = {logFile(), new File(LOG_DIR, PREV_NAME)};
+        for (File file : files) {
+            if (file.isFile() && !file.delete()) {
+                Log.w(TAG, "Could not delete " + file);
+                freed -= file.length();
+            }
+        }
+        Log.i(TAG, "Deleted " + freed + " bytes of captured log");
+        return freed;
     }
 
     private static void pump() {
@@ -130,6 +186,10 @@ public final class LogTee {
             // Losing the tee must never take the launcher down with it.
             Log.w(TAG, "Log tee stopped: " + e);
         } finally {
+            // Cleared here rather than only in stop(), so that a tee which failed
+            // to start - an unwritable Download/, a logcat that would not spawn -
+            // reports itself as not running instead of claiming to be capturing.
+            running = false;
             if (writer != null) {
                 try {
                     writer.flush();

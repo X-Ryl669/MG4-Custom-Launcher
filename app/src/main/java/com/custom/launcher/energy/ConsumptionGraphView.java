@@ -34,7 +34,7 @@ public class ConsumptionGraphView extends View {
     /** Gridlines at these fractions of the ceiling, plus the zero baseline. */
     private static final float[] GRID_FRACTIONS = { 1f / 4f, 2f / 4f, 3f / 4f, 1f };
 
-    private static final float LABEL_GUTTER_DP = 26f;
+    private static final float LABEL_GUTTER_DP = 34f;
 
     private final Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint gridPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -83,8 +83,8 @@ public class ConsumptionGraphView extends View {
         fillRegainPaint.setColor(Color.parseColor("#603380ff"));
 
         averagePaint.setStyle(Paint.Style.STROKE);
-        averagePaint.setStrokeWidth(1f * density);
-        averagePaint.setColor(Color.parseColor("#59636366"));
+        averagePaint.setStrokeWidth(2f * density);
+        averagePaint.setColor(Color.parseColor("#ccf38336"));
         averagePaint.setPathEffect(new android.graphics.DashPathEffect(
                 new float[] { 4f * density, 4f * density }, 0f));
 
@@ -96,7 +96,7 @@ public class ConsumptionGraphView extends View {
         gridPaint.setColor(0x26FFFFFF);
 
         gridLabelPaint.setColor(0x73FFFFFF);
-        gridLabelPaint.setTextSize(20f * getResources().getDisplayMetrics().scaledDensity);
+        gridLabelPaint.setTextSize(18f * getResources().getDisplayMetrics().scaledDensity);
         gridLabelPaint.setTextAlign(Paint.Align.RIGHT);
 
         labelGutter = LABEL_GUTTER_DP * density;

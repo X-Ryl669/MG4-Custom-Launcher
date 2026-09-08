@@ -29,6 +29,16 @@
     <uses-permission android:name="android.permission.CONNECTIVITY_INTERNAL" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!--
+        Floating another app's window over the launcher. MANAGE_ACTIVITY_STACKS
+        lets us set a task's windowing mode; REAL_GET_TASKS is what makes
+        getRunningTasks report other apps' tasks rather than only our own, which is
+        how the floating window is found again in order to put it away. Both are
+        signature|privileged and held via the platform signature.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_ACTIVITY_STACKS" />
+    <uses-permission android:name="android.permission.REAL_GET_TASKS" />
+
     <!-- Location: reading fixes, and standing in for the absent network provider. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

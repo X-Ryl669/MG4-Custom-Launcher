@@ -36,7 +36,10 @@ public class LogUtils {
             "LogUtils",
             "SaicSourceSwitch",
             "RadioClient",
-            "LocationRelay"
+            "LocationRelay",
+            "MediaArtLoader",
+            "GpsTile",
+            "FloatingApp"
     };
 
     /** {@code logcat} filterspec that keeps only our tags: "-s T1:V T2:V ... *:S". */

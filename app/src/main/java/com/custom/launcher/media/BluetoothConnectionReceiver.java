@@ -9,6 +9,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.util.Log;
 
+import com.custom.launcher.MediaBrowseActivity;
+
 /**
  * Wipes the stale AVRCP cover cache whenever a phone connects.
  *
@@ -98,5 +100,12 @@ public class BluetoothConnectionReceiver extends BroadcastReceiver {
         if (removed == 0) {
             BluetoothArtCache.clear(null);
         }
+        // Deleting the files is not enough on its own: the browse list keeps its
+        // own decoded thumbnails in memory, keyed by the same per-session AVRCP
+        // uids that just became meaningless.
+        MediaArtLoader.clearCache();
+        // Same reasoning for the browsed tree: the folder ids in it are this
+        // phone's, and a different phone's library must not be shown under them.
+        MediaBrowseActivity.forgetTree();
     }
 }

@@ -3,8 +3,11 @@ package com.custom.launcher.widget;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.SweepGradient;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
@@ -45,8 +48,11 @@ public class ArcSliderView extends View {
     /** How far it sweeps. 270 leaves a 90° gap at the bottom. */
     private static final float ARC_SWEEP_DEG = 270f;
 
-    private static final float TRACK_WIDTH_DP = 8f;
-    private static final float THUMB_RADIUS_DP = 9f;
+    private static final float TRACK_WIDTH_DP = 12f;
+    private static final float THUMB_RADIUS_DP = 12f;
+    private static final float MARKS_RADIUS_DP = 7f;
+
+    private static final float MARGIN_DP = 32f;
 
     public interface OnValueChangeListener {
         void onValueChanged(ArcSliderView view, int value, boolean fromUser);
@@ -57,10 +63,18 @@ public class ArcSliderView extends View {
     }
 
     private final Paint trackPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint highlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint darkenPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint progressPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint thumbPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint strokeThumbPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint markPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint valuePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint labelPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    private SweepGradient tempGradient = null;
+    private SweepGradient stepGradient = null;
     private final RectF arcBounds = new RectF();
 
     private int minValue;
@@ -76,6 +90,7 @@ public class ArcSliderView extends View {
 
     private float trackWidth;
     private float thumbRadius;
+    private float markRadius;
 
     public ArcSliderView(Context context) {
         this(context, null);
@@ -91,19 +106,38 @@ public class ArcSliderView extends View {
         float density = getResources().getDisplayMetrics().density;
         trackWidth = TRACK_WIDTH_DP * density;
         thumbRadius = THUMB_RADIUS_DP * density;
+        markRadius = MARKS_RADIUS_DP * density;
 
         trackPaint.setStyle(Paint.Style.STROKE);
         trackPaint.setStrokeCap(Paint.Cap.ROUND);
         trackPaint.setStrokeWidth(trackWidth);
         trackPaint.setColor(0x33FFFFFF);
 
+        strokePaint.setStyle(Paint.Style.STROKE);
+        strokePaint.setStrokeCap(Paint.Cap.ROUND);
+        strokePaint.setStrokeWidth(trackWidth + 8f * density);
+        strokePaint.setColor(0xFF000000);
+
         progressPaint.setStyle(Paint.Style.STROKE);
         progressPaint.setStrokeCap(Paint.Cap.ROUND);
         progressPaint.setStrokeWidth(trackWidth);
         progressPaint.setColor(0xFFFFFFFF);
 
+        markPaint.setStyle(Paint.Style.FILL);
+        markPaint.setColor(0xFF666666);
+
         thumbPaint.setStyle(Paint.Style.FILL);
-        thumbPaint.setColor(0xFFFFFFFF);
+        thumbPaint.setColor(0xFFC0C0C0);
+        strokeThumbPaint.setStyle(Paint.Style.FILL);
+        strokeThumbPaint.setColor(0xFF000000);
+
+        darkenPaint.setStyle(Paint.Style.STROKE);
+        darkenPaint.setStrokeWidth(4f * density);
+        darkenPaint.setColor(0xFF808080);
+
+        highlightPaint.setStyle(Paint.Style.STROKE);
+        highlightPaint.setStrokeWidth(4f * density);
+        highlightPaint.setColor(0xFFFFFFFF);
 
         valuePaint.setColor(0xFFFFFFFF);
         valuePaint.setTextAlign(Paint.Align.CENTER);
@@ -177,26 +211,93 @@ public class ArcSliderView extends View {
     public void setEnabled(boolean enabled) {
         super.setEnabled(enabled);
         setAlpha(enabled ? 1f : 0.4f);
+        /*
+        if (!enabled && trackPaint.getShader() != null) {
+            // Disable fancy graphics
+            trackPaint.setShader(null);
+            trackPaint.setColor(0x33FFFFFF);
+            invalidate();
+        } else if (enabled && trackPaint.getShader() == null) {
+            // Enable fancy graphics
+            onSizeChanged(getWidth(), getHeight(), getWidth(), getHeight());
+            invalidate();
+        }*/
     }
 
     // --- drawing ---
+    @Override
+    protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
+        //float density = getResources().getDisplayMetrics().density;
+        float cx = width / 2f; //(width - (int)(MARGIN_DP * density)) / 2f;
+        float cy = height / 2f; //(height - (int)(MARGIN_DP * density)) / 2f;
+
+
+        int colorCount = maxValue - minValue;
+        if (colorCount < 12)
+        {
+            int[] greyBars = new int[colorCount * 2];
+            float[] positionsBars = new float[colorCount * 2];
+            for (int v = 0; v < colorCount; v++)
+            {
+                float c[] = {186f, 1.0f, (float)v / (float)(colorCount - 1)};
+                greyBars[v * 2 + 0] = Color.HSVToColor(c);
+                greyBars[v * 2 + 1] = Color.HSVToColor(c);
+                float start = (float)v / (float)(colorCount), end = (float)(v+1) / (float)(colorCount) - 0.01f;
+                positionsBars[v * 2 + 0] = start * ARC_SWEEP_DEG / 360f ;
+                positionsBars[v * 2 + 1] = end * ARC_SWEEP_DEG / 360f;
+            }
+            stepGradient = new SweepGradient(cx, cy, greyBars, positionsBars);
+            Matrix matrix = new Matrix();
+            matrix.postRotate(270f - ARC_START_DEG, cx, cy); // rotate
+            stepGradient.setLocalMatrix(matrix);
+
+            trackPaint.setColor(0xFFFFFFFF);
+            trackPaint.setShader(stepGradient);
+        } else
+        {
+            int[] colors = { Color.BLUE, Color.GREEN, Color.YELLOW, Color.RED};
+            float[] positions = {0, 0.25f * ARC_SWEEP_DEG / 360f, 0.5f * ARC_SWEEP_DEG / 360f, 1.0f * ARC_SWEEP_DEG / 360f};
+            tempGradient = new SweepGradient(cx, cy, colors, positions);
+            Matrix matrix = new Matrix();
+            matrix.postRotate(270f - ARC_START_DEG, cx, cy); // rotate
+            tempGradient.setLocalMatrix(matrix);
+
+            trackPaint.setColor(0xFFFFFFFF);
+            trackPaint.setShader(tempGradient);
+        }
+
+    }
 
     @Override
     protected void onDraw(Canvas canvas) {
-        int width = getWidth();
-        int height = getHeight();
+        float density = getResources().getDisplayMetrics().density;
+        int width = getWidth() - (int)(MARGIN_DP * density);
+        int height = getHeight() - (int)(MARGIN_DP * density);
         float inset = trackWidth / 2f + thumbRadius - trackWidth / 2f;
         float diameter = Math.min(width, height) - 2f * Math.max(inset, thumbRadius);
         if (diameter <= 0) {
             return;
         }
 
-        float cx = width / 2f;
-        float cy = height / 2f;
+        float cx = width / 2f + MARGIN_DP * density / 2f;
+        float cy = height / 2f + MARGIN_DP * density / 2f;
         float radius = diameter / 2f;
         arcBounds.set(cx - radius, cy - radius, cx + radius, cy + radius);
 
+        canvas.drawArc(arcBounds, ARC_START_DEG, ARC_SWEEP_DEG, false, strokePaint);
         canvas.drawArc(arcBounds, ARC_START_DEG, ARC_SWEEP_DEG, false, trackPaint);
+
+
+
+        if (maxValue - minValue < 12)
+        {
+            for (int v = minValue; v < maxValue; v++)
+            {
+                double thumbRad = Math.toRadians(ARC_START_DEG + ARC_SWEEP_DEG * fractionOf(v));
+                canvas.drawCircle(cx + (float) (radius * Math.cos(thumbRad)),
+                        cy + (float) (radius * Math.sin(thumbRad)), markRadius, markPaint);
+            }
+        }
 
         float fraction = fractionOf(value);
         if (fraction > 0f) {
@@ -206,7 +307,15 @@ public class ArcSliderView extends View {
 
         double thumbRad = Math.toRadians(ARC_START_DEG + ARC_SWEEP_DEG * fraction);
         canvas.drawCircle(cx + (float) (radius * Math.cos(thumbRad)),
+                cy + (float) (radius * Math.sin(thumbRad)), thumbRadius + 4f * density, strokeThumbPaint);
+        canvas.drawCircle(cx + (float) (radius * Math.cos(thumbRad)),
                 cy + (float) (radius * Math.sin(thumbRad)), thumbRadius, thumbPaint);
+
+        // Fancy glass effect for the thumb now
+        float tr = thumbRadius * 0.75f;
+        arcBounds.set(cx + (float) (radius * Math.cos(thumbRad)) - tr, cy + (float) (radius * Math.sin(thumbRad)) - tr, cx + (float) (radius * Math.cos(thumbRad)) + tr, cy + (float) (radius * Math.sin(thumbRad)) + tr);
+        canvas.drawArc(arcBounds, 45f, 135f, false, darkenPaint);
+        canvas.drawArc(arcBounds, 0f, -135f, false, highlightPaint);
 
         // Type scales with the dial so one layout works at any card size.
         valuePaint.setTextSize(diameter * 0.30f);
